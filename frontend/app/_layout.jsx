@@ -68,7 +68,11 @@ const RootLayout = () => {
         }}>
           <Stack.Screen name="index" options={{title: 'Home'}}/> 
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(dashboard)" options={{ headerShown: false }} />      
+          <Stack.Screen name="(dashboard)" options={{ headerShown: false }} /> 
+          <Stack.Screen name="verify-account" options={{ title: 'Verify Account', headerShown: false}} />
+          <Stack.Screen name="reset-password" options={{ title: 'Reset Password', headerShown: false}} />
+          <Stack.Screen name="reset-password-verify" options={{ title: 'Reset Password Verification', headerShown: false }} />
+
         </Stack>
       </AuthInitializer>
     </Provider>

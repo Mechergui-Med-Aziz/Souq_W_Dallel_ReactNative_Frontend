@@ -26,11 +26,25 @@ export const authService = {
     console.log('Registration response:', response.data);
     return response;
   },
+
+  verifyAccount: async (email) => {
+    console.log('Verifying account for email:', email);
+    const response = await axiosInstance.post(`/api/auth/confirmation/${email}`);
+    console.log('Verification response:', response.data);
+    return response;
+  },
+  
+  resendCode: async (email) => {
+    return await axiosInstance.post('/api/auth/resend-code', { email });
+  },
+  
+  resetPassword: async (cin, email) => {
+    return await axiosInstance.post('/api/reset-password', { cin, email });
+  },
   
   logout: async () => {
     try {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
+      await AsyncStorage.multiRemove(['token', 'user']);
       console.log('Logged out successfully');
     } catch (error) {
       console.error('Error during logout:', error);

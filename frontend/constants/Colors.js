@@ -9,18 +9,18 @@ export const Colors = {
         navBackground: "#1b1a24" ,
         iconColor: "#9591a5" ,
         iconColorFocused: "#fff",
-        uiBackground: "#2f2b3d"
+        uiBackground: "#2f2b3d",
+        cardBackground: "#343049"
     },
 
     light: {
         text: "#625f72",
         title: "#201e2b",
-        background: "#e0dfe8" ,
-        navBackground: "#e8e7ef" ,
+        background: "#ffffff" ,
+        navBackground: "#edecf3" ,
         iconColor: "#686477" ,
         iconColorFocused: "#201e2b",
-        uiBackground: "#d6d5e1",
+        uiBackground: "#ebeaf1",
+        cardBackground: "#ffffff"
     }
 }
-
-    

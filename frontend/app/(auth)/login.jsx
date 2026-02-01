@@ -1,6 +1,8 @@
 import { StyleSheet, Text, Alert } from 'react-native';
 import { useState } from "react";
-import { Link } from "expo-router";
+import { Link, useRouter} from "expo-router";
+import { TouchableOpacity } from 'react-native';
+
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
 import Spacer from '../../components/Spacer';
@@ -13,6 +15,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { login, loading, error } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async () => {
     if (!email || !password) {
@@ -77,6 +80,15 @@ const Login = () => {
           Don't have an account? Register
         </ThemedText>
       </Link>
+
+      <Spacer height={20} />
+
+      <TouchableOpacity onPress={() => router.push('/reset-password')}>
+        <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
+          Forgot Password?
+        </ThemedText>
+      </TouchableOpacity>
+
     </ThemedView>
   );
 };

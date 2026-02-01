@@ -1,7 +1,13 @@
-import { StyleSheet, View, ScrollView, Alert, Keyboard } from 'react-native';
+import { 
+  StyleSheet, 
+  View, 
+  ScrollView, 
+  Alert, 
+  Keyboard, 
+  TouchableOpacity 
+} from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import ThemedView from "../../components/ThemedView";
@@ -154,13 +160,13 @@ const EditProfile = () => {
         {/* Header with Back Button */}
         <View style={[styles.header, { backgroundColor: theme.navBackground }]}>
           <View style={styles.headerContent}>
-            <Ionicons 
-              name="arrow-back" 
-              size={24} 
-              color={theme.iconColorFocused} 
-              onPress={() => router.push('/(dashboard)/profile')}
-              style={styles.backButton}
-            />
+            <TouchableOpacity onPress={() => router.push('/(dashboard)/profile')} style={styles.backButton}>
+              <Ionicons 
+                name="arrow-back" 
+                size={24} 
+                color={theme.iconColorFocused} 
+              />
+            </TouchableOpacity>
             <ThemedText title style={styles.headerTitle}>
               Edit Profile
             </ThemedText>
@@ -229,37 +235,31 @@ const EditProfile = () => {
               </View>
             </View>
 
-            {/* Password Section */}
+            {/* Password Reset Link */}
             <View style={styles.section}>
               <ThemedText title style={styles.sectionTitle}>
-                Change Password
-                <ThemedText style={styles.optionalText}> (optional)</ThemedText>
-              </ThemedText>
-              <ThemedText style={styles.sectionDescription}>
-                Leave blank to keep your current password
+                Password
               </ThemedText>
               
-              <View style={styles.inputGroup}>
-                <ThemedText style={styles.inputLabel}>New Password</ThemedText>
-                <ThemedTextInput
-                  style={[styles.input, errors.password && styles.inputError]}
-                  placeholder="Enter new password"
-                  secureTextEntry
-                  value={formData.password}
-                  onChangeText={(value) => handleChange('password', value)}
+              <TouchableOpacity 
+                style={styles.resetPasswordLink}
+                onPress={() => router.push('/reset-password')}
+              >
+                <Ionicons name="key-outline" size={20} color={Colors.primary} />
+                <ThemedText style={styles.resetPasswordText}>
+                  Reset Password
+                </ThemedText>
+                <Ionicons 
+                  name="chevron-forward" 
+                  size={20} 
+                  color={theme.iconColor} 
+                  style={{ marginLeft: 'auto' }} 
                 />
-                {errors.password && <ThemedText style={styles.errorText}>{errors.password}</ThemedText>}
-
-                <ThemedText style={styles.inputLabel}>Confirm Password</ThemedText>
-                <ThemedTextInput
-                  style={[styles.input, errors.confirmPassword && styles.inputError]}
-                  placeholder="Confirm new password"
-                  secureTextEntry
-                  value={formData.confirmPassword}
-                  onChangeText={(value) => handleChange('confirmPassword', value)}
-                />
-                {errors.confirmPassword && <ThemedText style={styles.errorText}>{errors.confirmPassword}</ThemedText>}
-              </View>
+              </TouchableOpacity>
+              
+              <ThemedText style={styles.resetPasswordDescription}>
+                Need to change your password? Click above to request a password reset email.
+              </ThemedText>
             </View>
           </ThemedCard>
 
@@ -369,16 +369,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  optionalText: {
-    fontSize: 14,
-    fontWeight: 'normal',
-    opacity: 0.7,
-  },
-  sectionDescription: {
-    fontSize: 14,
-    opacity: 0.7,
     marginBottom: 15,
   },
   inputGroup: {
@@ -406,6 +396,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 5,
     marginLeft: 5,
+  },
+  resetPasswordLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  resetPasswordText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+    color: Colors.primary,
+  },
+  resetPasswordDescription: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginTop: 10,
+    lineHeight: 20,
   },
   buttonsContainer: {
     paddingHorizontal: 10,

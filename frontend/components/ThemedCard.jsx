@@ -9,7 +9,7 @@ const ThemedCard = ({ style, elevated = true, ...props }) => {
     <View 
       style={[
         { 
-          backgroundColor: theme.uiBackground,
+          backgroundColor: theme.cardBackground,
           shadowColor: elevated ? '#000' : 'transparent',
           shadowOffset: elevated ? { width: 0, height: 5 } : { width: 0, height: 0 },
           shadowOpacity: elevated ? 0.1 : 0,

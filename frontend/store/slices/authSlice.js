@@ -74,8 +74,11 @@ export const registerUser = createAsyncThunk(
       const response = await authService.register(userData);
       console.log('Registration successful:', response.data);
       
-      // Return the registered user data
-      return response.data;
+      // Return the registered user data WITH the verification code
+      return {
+        user: response.data.user,
+        code: response.data.code 
+      };
     } catch (error) {
       console.error('Register thunk error:', error);
       
@@ -83,6 +86,42 @@ export const registerUser = createAsyncThunk(
       if (error.response) {
         errorMessage = error.response.data?.message || 
                       error.response.data?.error || 
+                      `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = 'No response from server. Check if backend is running.';
+      } else {
+        errorMessage = error.message || 'Network error';
+      }
+      
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
+export const verifyAccount = createAsyncThunk(
+  'auth/verify',
+  async ({ email }, { rejectWithValue }) => {
+    try {
+      console.log('Verifying account with email:', email);
+      const response = await authService.verifyAccount(email);
+      
+      // Update local storage if verification is successful
+      if (response.data) {
+        const userStr = await AsyncStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          user.status = 'Activated';
+          await AsyncStorage.setItem('user', JSON.stringify(user));
+        }
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Verification error:', error);
+      
+      let errorMessage = 'Verification failed';
+      if (error.response) {
+        errorMessage = error.response.data?.message || 
                       `Server error: ${error.response.status}`;
       } else if (error.request) {
         errorMessage = 'No response from server. Check if backend is running.';
@@ -105,7 +144,6 @@ const authSlice = createSlice({
     logoutLoading: false,
   },
   reducers: {
-    // Keep the synchronous logout for immediate UI update
     logout: (state) => {
       console.log('Sync logout action dispatched');
       state.token = null;
@@ -181,13 +219,25 @@ const authSlice = createSlice({
         console.log('Register fulfilled:', action.payload);
         state.loading = false;
         state.error = null;
-        // Don't set token/user on registration - user needs to login
       })
       .addCase(registerUser.rejected, (state, action) => {
         console.log('Register rejected:', action.payload);
         state.loading = false;
         state.error = action.payload;
-      });
+      })
+      .addCase(verifyAccount.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(verifyAccount.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = { ...state.user, status: 'Activated' };
+        state.error = null;
+      })
+      .addCase(verifyAccount.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });     
   },
 });
 

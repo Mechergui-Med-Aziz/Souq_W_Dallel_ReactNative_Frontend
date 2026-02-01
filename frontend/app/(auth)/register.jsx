@@ -1,7 +1,10 @@
 import { StyleSheet, Text, Alert, TouchableWithoutFeedback } from 'react-native';
 import { useState } from "react";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Keyboard } from "react-native";
+import { TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
 import ThemedButton from '../../components/ThemedButton';
@@ -20,7 +23,6 @@ const Register = () => {
     role: 'USER'
   });
   
-  const [successMessage, setSuccessMessage] = useState('');
   const { register, loading, error } = useAuth();
   const router = useRouter();
 
@@ -29,8 +31,6 @@ const Register = () => {
   };
 
   const handleSubmit = async () => {
-    setSuccessMessage('');
-    
     // Basic validation
     if (!formData.firstname || !formData.lastname || !formData.cin || !formData.email || !formData.password) {
       Alert.alert('Error', 'Please fill all required fields');
@@ -38,21 +38,29 @@ const Register = () => {
     }
     
     try {
-      await register(formData);
-      setSuccessMessage('Registration successful! Please login with your credentials.');
+      // Clear any previous verification code
+      await AsyncStorage.removeItem('verificationCode');
       
-      // Clear form
-      setFormData({
-        firstname: '',
-        lastname: '',
-        cin: '',
-        email: '',
-        password: '',
-        role: 'USER'
-      });
+      const result = await register(formData);
+      
+      // Check if registration was successful and we have a verification code
+      if (result.payload && result.payload.code) {
+        // Store the verification code locally
+        await AsyncStorage.setItem('verificationCode', result.payload.code);
+        await AsyncStorage.setItem('pendingVerificationEmail', formData.email);
+        
+        Alert.alert(
+          'Verification Code Sent',
+          'A 6-digit verification code has been sent to your email. Please check your inbox.',
+          [{ text: 'OK', onPress: () => router.replace('/verify-account') }]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to get verification code. Please try again.');
+      }
       
     } catch (err) {
       // Error is handled by Redux
+      console.error('Registration error:', err);
     }
   };
 
@@ -117,25 +125,27 @@ const Register = () => {
 
         <Spacer />
 
-        {successMessage && (
-          <Text style={styles.success}> {successMessage} </Text>
-        )}
-
         {error && <Text style={styles.error}> {error} </Text>}
 
         <Spacer height={40} />
 
-        <Link href='/login'>
+        <TouchableOpacity onPress={() => router.push('/login')}>
           <ThemedText style={{ textAlign: 'center'}}>
             Already have an account? Login
           </ThemedText>
-        </Link>
+        </TouchableOpacity>
+
+        <Spacer height={20} />
+
+        <TouchableOpacity onPress={() => router.push('/reset-password')}>
+          <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
+            Forgot Password?
+          </ThemedText>
+        </TouchableOpacity>
       </ThemedView>
     </TouchableWithoutFeedback>
   );
 };
-
-export default Register;
 
 const styles = StyleSheet.create({
   container: {
@@ -154,17 +164,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 15,
   },
-  success: {
-    color: 'green',
-    padding: 10,
-    width: '90%',
-    backgroundColor: '#d4edda',
-    borderColor: 'green',
-    borderWidth: 1,
-    borderRadius: 6,
-    marginHorizontal: 10,
-    textAlign: 'center',
-  },
   error: {
     color: Colors.warning,
     padding: 10,
@@ -180,3 +179,5 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   }
 });
+
+export default Register;
