@@ -20,13 +20,17 @@ import Spacer from '../components/Spacer';
 import { Colors } from '../constants/Colors';
 import { useAppDispatch } from '../hooks/useAppDispatch';
 import { verifyAccount } from '../store/slices/authSlice';
-import { TextInput, ActivityIndicator } from 'react-native';
+import { useAuth } from '../hooks/useAuth';
+
+// Add TextInput import
+import { TextInput, ActivityIndicator, ScrollView } from 'react-native';
 
 const VerifyAccount = () => {
   const router = useRouter();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme] ?? Colors.light;
   const dispatch = useAppDispatch();
+  const { user } = useAuth();
   
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -34,6 +38,7 @@ const VerifyAccount = () => {
   const [countdown, setCountdown] = useState(60);
   const [storedCode, setStoredCode] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userPassword, setUserPassword] = useState('');
   const inputRefs = useRef([]);
 
   useEffect(() => {
@@ -48,6 +53,23 @@ const VerifyAccount = () => {
         return prev - 1;
       });
     }, 1000);
+
+    const checkIfAlreadyAuthenticated = async () => {
+      const token = await AsyncStorage.getItem('token');
+      const userStr = await AsyncStorage.getItem('user');
+      
+      if (token && userStr) {
+        const user = JSON.parse(userStr);
+        
+        // If user is already authenticated and activated, redirect to dashboard
+        if (user.status !== 'Waiting for validation') {
+          console.log('User already authenticated, redirecting to dashboard');
+          router.replace('/(dashboard)');
+        }
+      }
+    };
+
+    checkIfAlreadyAuthenticated();
     
     return () => clearInterval(timer);
   }, []);
@@ -56,6 +78,7 @@ const VerifyAccount = () => {
     try {
       const savedCode = await AsyncStorage.getItem('verificationCode');
       const savedEmail = await AsyncStorage.getItem('pendingVerificationEmail');
+      const savedPassword = await AsyncStorage.getItem('pendingRegistrationPassword');
       
       if (savedCode) {
         setStoredCode(savedCode);
@@ -64,6 +87,10 @@ const VerifyAccount = () => {
       
       if (savedEmail) {
         setUserEmail(savedEmail);
+      }
+      
+      if (savedPassword) {
+        setUserPassword(savedPassword);
       }
       
       if (!savedCode || !savedEmail) {
@@ -118,23 +145,38 @@ const VerifyAccount = () => {
     setLoading(true);
 
     try {
-      // Call backend to activate account
+      // Verify account AND login automatically
       await dispatch(verifyAccount({ 
-        email: userEmail 
+        email: userEmail,
+        password: userPassword
       })).unwrap();
       
-      // Clear stored verification data
-      await AsyncStorage.multiRemove(['verificationCode', 'pendingVerificationEmail']);
+      // Wait a moment for Redux state to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      Alert.alert(
-        'Success', 
-        'Account verified successfully! You can now login with your credentials.',
-        [{ text: 'OK', onPress: () => router.replace('/login') }]
-      );
+      // Check if we have token in AsyncStorage
+      const token = await AsyncStorage.getItem('token');
+      const userData = await AsyncStorage.getItem('user');
+      
+      if (token && userData) {
+        console.log('Verification and login successful, redirecting to dashboard...');
+        
+        // Use setTimeout to ensure navigation happens after state update
+        setTimeout(() => {
+          router.replace('/(dashboard)');
+        }, 500);
+      } else {
+        console.log('No token found after verification');
+        Alert.alert(
+          'Verification Complete', 
+          'Account verified successfully! Please login with your credentials.',
+          [{ text: 'OK', onPress: () => router.replace('/login') }]
+        );
+      }
       
     } catch (error) {
       console.error('Verification error:', error);
-      Alert.alert('Error', error || 'Failed to activate account. Please try again.');
+      Alert.alert('Error', error || 'Failed to verify account. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -149,14 +191,12 @@ const VerifyAccount = () => {
     setResendLoading(true);
 
     try {
-      // Resend Code : ToDo
       Alert.alert(
-        'Resend Code',
-        'To get a new verification code, please register again with the same email.',
+        'Info',
+        'To get a new verification code, please try logging in with your credentials.',
         [{ text: 'OK' }]
       );
       
-      // Reset countdown
       setCountdown(60);
       
     } catch (error) {
@@ -234,10 +274,6 @@ const VerifyAccount = () => {
                 ))}
               </View>
 
-              <ThemedText style={styles.codeHint}>
-                {storedCode ? `Debug: Code is ${storedCode}` : 'Enter the 6-digit code from your email'}
-              </ThemedText>
-
               <Spacer height={30} />
 
               <ThemedButton
@@ -252,7 +288,7 @@ const VerifyAccount = () => {
                     <Ionicons name="checkmark-circle" size={22} color="#fff" />
                   )}
                   <ThemedText style={styles.buttonText}>
-                    {loading ? 'Verifying...' : 'Verify Account'}
+                    {loading ? 'Verifying & Logging in...' : 'Verify & Login'}
                   </ThemedText>
                 </View>
               </ThemedButton>
@@ -286,13 +322,13 @@ const VerifyAccount = () => {
             <View style={styles.helpContainer}>
               <Ionicons name="information-circle" size={20} color={theme.iconColor} />
               <ThemedText style={styles.helpText}>
+                • You will be logged in automatically after verification
+              </ThemedText>
+              <ThemedText style={styles.helpText}>
                 • The code is valid for 10 minutes
               </ThemedText>
               <ThemedText style={styles.helpText}>
                 • Check your spam folder if you don't see the email
-              </ThemedText>
-              <ThemedText style={styles.helpText}>
-                • Contact support if you need assistance
               </ThemedText>
             </View>
           </View>
@@ -301,9 +337,6 @@ const VerifyAccount = () => {
     </ThemedView>
   );
 };
-
-// Add ScrollView import
-import { ScrollView } from 'react-native';
 
 const styles = StyleSheet.create({
   container: {
@@ -386,12 +419,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     width: '100%',
     height: '100%',
-  },
-  codeHint: {
-    fontSize: 14,
-    opacity: 0.7,
-    marginTop: 10,
-    textAlign: 'center',
   },
   verifyButton: {
     width: '100%',

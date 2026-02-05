@@ -2,6 +2,7 @@ import { StyleSheet, Text, Alert } from 'react-native';
 import { useState } from "react";
 import { Link, useRouter} from "expo-router";
 import { TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
@@ -24,7 +25,26 @@ const Login = () => {
     }
     
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      
+      // Check if login result indicates verification is needed
+      if (result.payload && result.payload.needsVerification) {
+        // Store the email and code for verification
+        if (result.payload.code) {
+          await AsyncStorage.setItem('verificationCode', result.payload.code);
+          await AsyncStorage.setItem('pendingVerificationEmail', email);
+          await AsyncStorage.setItem('pendingRegistrationPassword', password);
+        }
+        
+        Alert.alert(
+          'Verification Required',
+          'Your account needs verification. A code has been sent to your email.',
+          [{ text: 'OK', onPress: () => router.replace('/verify-account') }]
+        );
+      }
+      // If login is successful without verification needed, it will automatically redirect
+      // via the UserOnly component in the dashboard layout
+      
     } catch (err) {
       // Error is handled by Redux
     }

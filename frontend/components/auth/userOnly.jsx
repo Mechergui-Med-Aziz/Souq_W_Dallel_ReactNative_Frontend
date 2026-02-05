@@ -1,29 +1,18 @@
 import { useAuth } from '../../hooks/useAuth';
-import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useAuthRedirect } from '../../hooks/useAuthRedirect';
 import ThemedLoader from '../ThemedLoader';
 
 const UserOnly = ({ children }) => {
   const { token, loading, user } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!loading) {
-      if (!token) {
-        router.replace('/login');
-      } else if (user?.status === 'Waiting for validation') {
-        // Only redirect if we're not already on the verification page
-        if (router.pathname !== '/verify-account') {
-          router.replace('/verify-account');
-        }
-      }
-    }
-  }, [token, loading, user, router.pathname]);
+  
+  // Use the auth redirect hook
+  useAuthRedirect();
 
   if (loading) {
     return <ThemedLoader />;
   }
 
+  // Only show children if we have a token AND user is not waiting for validation
   if (!token || (user?.status === 'Waiting for validation')) {
     return null;
   }

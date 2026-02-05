@@ -4,17 +4,35 @@ import { authService } from '../services/authService';
 
 export const loginUser = createAsyncThunk(
   'auth/login',
-  async ({ email, password }, { rejectWithValue }) => {
+  async ({ email, password }, { rejectWithValue, dispatch }) => {
     try {
       console.log('Login thunk called for email:', email);
       const response = await authService.login(email, password);
       
+      // Check if user status is "Waiting for validation"
+      if (response.data.status === 'Waiting for validation') {
+        // Store the verification code if sent
+        if (response.data.code) {
+          await AsyncStorage.setItem('verificationCode', response.data.code);
+          await AsyncStorage.setItem('pendingVerificationEmail', email);
+        }
+        
+        // Return special flag to indicate verification needed
+        return {
+          needsVerification: true,
+          email: email,
+          code: response.data.code
+        };
+      }
+      
+      // If status is not "Waiting for validation", proceed with normal login
       if (response.data && response.data.token) {
-        // Save user data from response
         const userData = {
           id: response.data.id,
           email: response.data.email,
-          token: response.data.token
+          token: response.data.token,
+          role: response.data.role,
+          status: response.data.status
         };
         
         console.log('Saving to AsyncStorage:', userData);
@@ -31,15 +49,12 @@ export const loginUser = createAsyncThunk(
       
       let errorMessage = 'Login failed';
       if (error.response) {
-        // Server responded with error
         errorMessage = error.response.data?.error || 
                       error.response.data?.message || 
                       `Server error: ${error.response.status}`;
       } else if (error.request) {
-        // No response received
         errorMessage = 'No response from server. Check if backend is running.';
       } else {
-        // Request setup error
         errorMessage = error.message || 'Network error';
       }
       
@@ -98,24 +113,75 @@ export const registerUser = createAsyncThunk(
   }
 );
 
+export const sendVerificationCode = createAsyncThunk(
+  'auth/sendVerificationCode',
+  async (email, { rejectWithValue }) => {
+    try {
+      console.log('Sending verification code for email:', email);
+      const response = await authService.login(email, 'dummyPassword'); 
+      
+      // If the user is "Waiting for validation", the backend will send a code
+      // and return it in the response
+      return response.data;
+    } catch (error) {
+      console.error('Send verification code error:', error);
+      
+      let errorMessage = 'Failed to send verification code';
+      if (error.response) {
+        errorMessage = error.response.data?.message || 
+                      `Server error: ${error.response.status}`;
+      } else if (error.request) {
+        errorMessage = 'No response from server';
+      } else {
+        errorMessage = error.message || 'Network error';
+      }
+      
+      return rejectWithValue(errorMessage);
+    }
+  }
+);
+
 export const verifyAccount = createAsyncThunk(
   'auth/verify',
-  async ({ email }, { rejectWithValue }) => {
+  async ({ email, password }, { rejectWithValue, dispatch }) => {
     try {
-      console.log('Verifying account with email:', email);
-      const response = await authService.verifyAccount(email);
+      console.log('Verifying account and logging in for email:', email);
       
-      // Update local storage if verification is successful
-      if (response.data) {
-        const userStr = await AsyncStorage.getItem('user');
-        if (userStr) {
-          const user = JSON.parse(userStr);
-          user.status = 'Activated';
-          await AsyncStorage.setItem('user', JSON.stringify(user));
+      // First, verify the account
+      const verifyResponse = await authService.verifyAccount(email);
+      console.log('Account verification response:', verifyResponse.data);
+      
+      // Then, login with the provided password
+      if (password) {
+        const loginResponse = await authService.login(email, password);
+        
+        if (loginResponse.data && loginResponse.data.token) {
+          const userData = {
+            id: loginResponse.data.id,
+            email: loginResponse.data.email,
+            token: loginResponse.data.token,
+            role: loginResponse.data.role,
+            status: 'Activated'
+          };
+          
+          console.log('Saving authenticated user to storage:', userData);
+          
+          // Save to AsyncStorage
+          await AsyncStorage.setItem('token', loginResponse.data.token);
+          await AsyncStorage.setItem('user', JSON.stringify(userData));
+          
+          // Clear verification data
+          await AsyncStorage.multiRemove(['verificationCode', 'pendingVerificationEmail', 'pendingRegistrationPassword']);
+          
+          // IMPORTANT: Return the full user data
+          return userData;
         }
       }
       
-      return response.data;
+      // If no password provided or login failed
+      await AsyncStorage.multiRemove(['verificationCode', 'pendingVerificationEmail', 'pendingRegistrationPassword']);
+      return { verified: true, email: email };
+      
     } catch (error) {
       console.error('Verification error:', error);
       
@@ -230,14 +296,25 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(verifyAccount.fulfilled, (state, action) => {
+        console.log('VerifyAccount fulfilled:', action.payload);
         state.loading = false;
-        state.user = { ...state.user, status: 'Activated' };
-        state.error = null;
+        
+        // Check if we have a full user object with token
+        if (action.payload && action.payload.token) {
+          state.token = action.payload.token;
+          state.user = action.payload;
+          state.error = null;
+          console.log('User authenticated and state updated');
+        } else {
+          // Just verification success, no login
+          console.log('Account verified but no login performed');
+        }
       })
       .addCase(verifyAccount.rejected, (state, action) => {
+        console.log('verifyAccount rejected:', action.payload);
         state.loading = false;
         state.error = action.payload;
-      });     
+      });  
   },
 });
 

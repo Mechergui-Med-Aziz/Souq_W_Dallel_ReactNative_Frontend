@@ -33,6 +33,18 @@ export const authService = {
     console.log('Verification response:', response.data);
     return response;
   },
+
+  verifyAndLogin: async (email, password) => {
+    console.log('Verifying and logging in:', email);
+    // First verify
+    await axiosInstance.post(`/api/auth/confirmation/${email}`);
+    // Then login
+    const loginResponse = await axiosInstance.post('/api/auth/login', { 
+      email, 
+      password 
+    });
+    return loginResponse;
+  },
   
   resendCode: async (email) => {
     return await axiosInstance.post('/api/auth/resend-code', { email });

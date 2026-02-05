@@ -38,16 +38,17 @@ const Register = () => {
     }
     
     try {
-      // Clear any previous verification code
-      await AsyncStorage.removeItem('verificationCode');
+      // Clear any previous verification data
+      await AsyncStorage.multiRemove(['verificationCode', 'pendingVerificationEmail', 'pendingRegistrationPassword']);
       
       const result = await register(formData);
       
       // Check if registration was successful and we have a verification code
       if (result.payload && result.payload.code) {
-        // Store the verification code locally
+        // Store the verification code AND password locally
         await AsyncStorage.setItem('verificationCode', result.payload.code);
         await AsyncStorage.setItem('pendingVerificationEmail', formData.email);
+        await AsyncStorage.setItem('pendingRegistrationPassword', formData.password); // Store password
         
         Alert.alert(
           'Verification Code Sent',
