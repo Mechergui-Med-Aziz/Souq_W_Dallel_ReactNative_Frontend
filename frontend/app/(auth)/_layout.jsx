@@ -1,18 +1,21 @@
 import { Stack } from "expo-router"
 import { StatusBar } from "expo-status-bar"
 import { useAuth } from "../../hooks/useAuth"
-import GuestOnly from "../../components/auth/guestOnly"
+import AuthGuard from "../../components/auth/AuthGuard"
 
 const AuthLayout = () => {
-  const { user } = useAuth()  // Now using useAuth
+  const { user } = useAuth()
 
   return (
-    <GuestOnly>
+    <AuthGuard guestOnly redirectTo="/">
       <StatusBar value="auto"/>
       <Stack 
-        screenOptions={{ headerShown: false, animation: 'none'}}
+        screenOptions={{ 
+          headerShown: false, 
+          animation: 'none',
+        }}
       />
-    </GuestOnly>
+    </AuthGuard>
   )
 }
 

@@ -20,6 +20,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { fetchUserById, updateUser } from '../../store/slices/userSlice';
 import { Colors } from '../../constants/Colors';
+import AuthGuard from "../../components/auth/AuthGuard"
 
 const EditProfile = () => {
   const router = useRouter();
@@ -151,6 +152,7 @@ const EditProfile = () => {
   };
 
   return (
+    <AuthGuard userOnly redirectTo="/(auth)/login">
     <ThemedView safe style={styles.container}>
       <ScrollView 
         style={styles.scrollView} 
@@ -302,6 +304,7 @@ const EditProfile = () => {
         </View>
       </ScrollView>
     </ThemedView>
+    </AuthGuard>
   );
 };
 

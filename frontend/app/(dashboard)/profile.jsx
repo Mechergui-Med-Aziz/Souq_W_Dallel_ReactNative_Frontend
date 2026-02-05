@@ -6,13 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import ThemedView from "../../components/ThemedView";
 import ThemedText from "../../components/ThemedText";
-import ThemedButton from "../../components/ThemedButton";
 import ThemedCard from "../../components/ThemedCard";
 import Spacer from "../../components/Spacer";
 import { useAuth } from "../../hooks/useAuth";
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { fetchUserById } from '../../store/slices/userSlice';
 import { Colors } from '../../constants/Colors';
+import AuthGuard from "../../components/auth/AuthGuard"
 
 const Profile = () => {
   const router = useRouter();
@@ -112,6 +112,7 @@ const Profile = () => {
   const displayEmail = authUser?.email || userData?.email || 'No email';
 
   return (
+    <AuthGuard userOnly redirectTo="/(auth)/login">
     <ThemedView safe style={styles.container}>
       <ScrollView 
         style={styles.scrollView} 
@@ -263,6 +264,7 @@ const Profile = () => {
         </View>
       </ScrollView>
     </ThemedView>
+    </AuthGuard>
   );
 };
 

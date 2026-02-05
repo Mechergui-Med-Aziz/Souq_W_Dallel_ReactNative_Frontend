@@ -16,7 +16,7 @@ export const useAuthRedirect = () => {
         
         const currentPath = router.pathname || '';
         
-        console.log('🔍 Auth redirect check:', {
+        console.log('Auth redirect check:', {
           reduxToken: token,
           storedToken,
           currentPath,
