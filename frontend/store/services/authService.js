@@ -64,7 +64,7 @@ export const authService = {
 
   verifyAccount: async (email) => {
     const response = await axiosInstance.post(
-      API_ENDPOINTS.VERIFY_ACCOUNT(email),
+      API_ENDPOINTS.VALIDATE_ACCOUNT(email),
       {},
       {
         headers: {

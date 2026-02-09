@@ -1,10 +1,21 @@
-import { StyleSheet, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import ThemedText from './ThemedText';
 import ThemedCard from './ThemedCard';
 import { Colors } from '../constants/Colors';
+import { auctionService } from '../store/services/auctionService';
 
 const AuctionCard = ({ auction, onPress }) => {
+  const [photoUrl, setPhotoUrl] = useState(null);
+  
+  useEffect(() => {
+    if (auction?.photoId?.[0]) {
+      const url = auctionService.getAuctionPhotoUrl(auction.id, auction.photoId[0]);
+      setPhotoUrl(url);
+    }
+  }, [auction]);
+
   const formatPrice = (price) => {
     return `$${price?.toFixed(2) || '0.00'}`;
   };
@@ -22,9 +33,17 @@ const AuctionCard = ({ auction, onPress }) => {
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
       <ThemedCard style={styles.card} elevated>
         <View style={styles.imageContainer}>
-          <View style={styles.noImage}>
-            <Ionicons name="image" size={40} color="#ccc" />
-          </View>
+          {photoUrl ? (
+            <Image 
+              source={{ uri: photoUrl }} 
+              style={styles.auctionImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.noImage}>
+              <Ionicons name="image" size={40} color="#ccc" />
+            </View>
+          )}
           
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(auction.status) }]}>
             <ThemedText style={styles.statusText}>
@@ -35,7 +54,7 @@ const AuctionCard = ({ auction, onPress }) => {
           <View style={styles.bidCountBadge}>
             <Ionicons name="people" size={14} color="#fff" />
             <ThemedText style={styles.bidCountText}>
-              {auction.bidders?.length || 0}
+              {auction.bidders ? Object.keys(auction.bidders).length : 0}
             </ThemedText>
           </View>
         </View>
@@ -101,6 +120,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     marginBottom: 15,
+  },
+  auctionImage: {
+    width: '100%',
+    height: '100%',
   },
   noImage: {
     width: '100%',

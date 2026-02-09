@@ -4,7 +4,7 @@ export const API_ENDPOINTS = {
   // Auth endpoints
   LOGIN: '/api/auth/login',
   REGISTER: '/api/auth/register',
-  VERIFY_ACCOUNT: (email) => `/api/auth/confirmation/${email}`,
+  VALIDATE_ACCOUNT: (email) => `/api/auth/validate/${email}`,
   RESEND_CODE: (email) => `/api/auth/confirmation/${email}/resend`,
   RESET_PASSWORD: '/api/reset-password',
   
@@ -20,4 +20,6 @@ export const API_ENDPOINTS = {
   CREATE_AUCTION: '/api/auctions/create',
   UPDATE_AUCTION: (id) => `/api/auctions/update/${id}`,
   DELETE_AUCTION: (id) => `/api/auctions/delete/${id}`,
+  GET_AUCTIONS_BY_SELLER: (sellerId) => `/api/auctions/seller/${sellerId}`,
+  GET_AUCTION_PHOTO: (auctionId, photoId) => `/api/auctions/${auctionId}/photos/${photoId}`,
 };

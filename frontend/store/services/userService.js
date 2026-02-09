@@ -60,4 +60,19 @@ export const userService = {
     const response = await axiosInstance.delete(API_ENDPOINTS.DELETE_USER_PHOTO(userId));
     return response.data;
   },
+  
+  // New method to fetch user photo
+  fetchUserPhoto: async (userId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.USER_PHOTO(userId)}`);
+      if (response.ok) {
+        const blob = await response.blob();
+        return URL.createObjectURL(blob);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching user photo:', error);
+      return null;
+    }
+  }
 };

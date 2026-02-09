@@ -42,17 +42,30 @@ const Profile = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [userPhotoUrl, setUserPhotoUrl] = useState(null);
+  const [photoRefreshing, setPhotoRefreshing] = useState(false);
 
   useEffect(() => {
     if (authUser?.id) {
-      loadUserData();
+      loadUserDataAndPhoto();
     }
   }, [authUser?.id]);
 
-  const loadUserData = async () => {
+  useEffect(() => {
+    if (userData?.photoId) {
+      loadUserPhoto();
+    } else {
+      setUserPhotoUrl(null);
+    }
+  }, [userData?.photoId, userData?.id]);
+
+  const loadUserDataAndPhoto = async () => {
     try {
       setIsLoading(true);
+      
+      // Load user data first
       await dispatch(fetchUserById(authUser.id)).unwrap();
+      
     } catch (error) {
       console.error('Error loading user data:', error);
       if (error.status === 404) {
@@ -60,6 +73,25 @@ const Profile = () => {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadUserPhoto = async () => {
+    if (!userData?.photoId) {
+      setUserPhotoUrl(null);
+      return;
+    }
+
+    try {
+      setPhotoRefreshing(true);
+      // Get fresh photo URL with timestamp to prevent caching
+      const photoUrl = `${userService.getUserPhotoUrl(userData.id, userData.photoId)}?t=${Date.now()}`;
+      setUserPhotoUrl(photoUrl);
+    } catch (error) {
+      console.error('Error loading user photo:', error);
+      setUserPhotoUrl(null);
+    } finally {
+      setPhotoRefreshing(false);
     }
   };
 
@@ -121,7 +153,8 @@ const Profile = () => {
         photoFile: selectedImage
       })).unwrap();
       
-      await loadUserData();
+      // Reload user data to get updated photoId
+      await loadUserDataAndPhoto();
       Alert.alert('Success', 'Profile photo updated!');
       setPhotoModalVisible(false);
       setSelectedImage(null);
@@ -148,7 +181,10 @@ const Profile = () => {
           onPress: async () => {
             try {
               await dispatch(deleteUserPhoto(authUser.id)).unwrap();
+              // Reload user data
+              await loadUserDataAndPhoto();
               Alert.alert('Success', 'Profile photo removed successfully!');
+              setUserPhotoUrl(null);
             } catch (error) {
               console.error('Error removing photo:', error);
               Alert.alert('Error', 'Failed to remove photo. Please try again.');
@@ -219,13 +255,6 @@ const Profile = () => {
   
   const displayEmail = authUser?.email || userData?.email || 'No email';
 
-  const getUserPhotoUrl = () => {
-    if (userData?.photoId) {
-      return userService.getUserPhotoUrl(authUser.id, userData.photoId);
-    }
-    return null;
-  };
-
   return (
     <ThemedView safe style={styles.container}>
       <ScrollView 
@@ -265,35 +294,36 @@ const Profile = () => {
             <TouchableOpacity 
               style={styles.avatarContainer}
               onPress={pickImage}
-              disabled={photoLoading}
+              disabled={photoLoading || photoRefreshing}
             >
-              {getUserPhotoUrl() ? (
+              {userPhotoUrl && !photoRefreshing ? (
                 <Image 
-                  source={{ uri: getUserPhotoUrl() }} 
+                  source={{ uri: userPhotoUrl }} 
                   style={styles.avatarImage}
+                  onError={() => setUserPhotoUrl(null)}
                 />
               ) : (
                 <LinearGradient
                   colors={[Colors.primary, '#764ba2']}
                   style={styles.avatarGradient}
                 >
-                  <ThemedText style={styles.avatarText}>
-                    {displayName.charAt(0).toUpperCase()}
-                  </ThemedText>
+                  {photoRefreshing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <ThemedText style={styles.avatarText}>
+                      {displayName.charAt(0).toUpperCase()}
+                    </ThemedText>
+                  )}
                 </LinearGradient>
               )}
               
-              {photoLoading ? (
-                <View style={styles.photoLoadingOverlay}>
+              <View style={styles.photoEditButton}>
+                {photoRefreshing ? (
                   <ActivityIndicator size="small" color="#fff" />
-                </View>
-              ) : (
-                <View style={styles.photoEditButton}>
+                ) : (
                   <Ionicons name="camera" size={20} color="#fff" />
-                </View>
-              )}
-              
-              <View style={styles.onlineIndicator} />
+                )}
+              </View>
             </TouchableOpacity>
 
             <ThemedText title style={styles.userName}>
@@ -302,6 +332,20 @@ const Profile = () => {
             <ThemedText style={styles.userEmail}>
               {displayEmail}
             </ThemedText>
+            
+            <View style={styles.photoActions}>
+              
+              {userData?.photoId && (
+                <TouchableOpacity 
+                  style={styles.photoActionButton}
+                  onPress={removePhoto}
+                  disabled={photoRefreshing}
+                >
+                  <Ionicons name="trash-outline" size={16} color={Colors.warning} />
+                  <ThemedText style={styles.photoActionText}>Remove Photo</ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
           </ThemedCard>
 
           <Spacer height={20} />
@@ -517,27 +561,25 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
-  photoLoadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 60,
+  photoActions: {
+    flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
+    gap: 20,
+    marginTop: 10,
   },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 5,
-    right: 5,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#4ade80',
-    borderWidth: 3,
-    borderColor: '#fff',
+  photoActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+  },
+  photoActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+    color: Colors.primary,
+  },
+  photoActionTextDisabled: {
+    color: '#999',
   },
   userName: {
     fontSize: 24,
@@ -548,25 +590,8 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 16,
     opacity: 0.8,
-    marginBottom: 20,
+    marginBottom: 10,
     textAlign: 'center',
-  },
-  photoActions: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-    marginTop: 10,
-  },
-  photoActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  photoActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-    color: Colors.primary,
   },
   infoCard: {
     borderRadius: 20,

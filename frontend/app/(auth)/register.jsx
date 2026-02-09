@@ -54,7 +54,7 @@ const Register = () => {
           `A verification code has been sent to ${formData.email}. You will be logged in automatically after verification.`,
           [{ 
             text: 'Verify Now', 
-            onPress: () => router.replace('/(auth)/verify-account') 
+            onPress: () => router.replace('/verify-account') 
           }]
         );
       }

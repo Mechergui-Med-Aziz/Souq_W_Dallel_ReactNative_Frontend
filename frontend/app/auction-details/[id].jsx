@@ -22,6 +22,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { fetchAuctionById } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
+import { auctionService } from '../../store/services/auctionService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -37,6 +38,7 @@ const AuctionDetails = () => {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [currentBid, setCurrentBid] = useState('');
   const [isOwner, setIsOwner] = useState(false);
+  const [auctionPhotos, setAuctionPhotos] = useState([]);
 
   useEffect(() => {
     if (id) {
@@ -47,6 +49,14 @@ const AuctionDetails = () => {
   useEffect(() => {
     if (currentAuction && user) {
       setIsOwner(currentAuction.seller?.id === user.id);
+      
+      // Load auction photos
+      if (currentAuction.photoId?.length > 0) {
+        const photos = currentAuction.photoId.map(photoId => 
+          auctionService.getAuctionPhotoUrl(currentAuction.id, photoId)
+        );
+        setAuctionPhotos(photos);
+      }
     }
   }, [currentAuction, user]);
 
@@ -148,10 +158,57 @@ const AuctionDetails = () => {
           </View>
         </View>
 
-        <View style={styles.noImage}>
-          <Ionicons name="image" size={80} color="#ccc" />
-          <ThemedText style={styles.noImageText}>No images available</ThemedText>
-        </View>
+        {auctionPhotos.length > 0 ? (
+          <>
+            <View style={styles.mainImageContainer}>
+              <Image 
+                source={{ uri: auctionPhotos[activeImageIndex] }} 
+                style={styles.mainImage}
+                resizeMode="cover"
+              />
+              
+              {auctionPhotos.length > 1 && (
+                <View style={styles.imageCounter}>
+                  <ThemedText style={styles.imageCounterText}>
+                    {activeImageIndex + 1} / {auctionPhotos.length}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            
+            {auctionPhotos.length > 1 && (
+              <View style={styles.thumbnailContainer}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.thumbnailScrollContent}
+                >
+                  {auctionPhotos.map((photo, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.thumbnail,
+                        activeImageIndex === index && styles.thumbnailActive
+                      ]}
+                      onPress={() => setActiveImageIndex(index)}
+                    >
+                      <Image 
+                        source={{ uri: photo }} 
+                        style={styles.thumbnailImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.noImage}>
+            <Ionicons name="image" size={80} color="#ccc" />
+            <ThemedText style={styles.noImageText}>No images available</ThemedText>
+          </View>
+        )}
 
         <View style={styles.content}>
           <ThemedCard style={styles.infoCard}>
@@ -205,39 +262,9 @@ const AuctionDetails = () => {
                     {currentAuction.seller?.email || 'No email'}
                   </ThemedText>
                 </View>
-                <TouchableOpacity style={styles.contactButton}>
-                  <Ionicons name="chatbubble" size={20} color={Colors.primary} />
-                  <ThemedText style={styles.contactButtonText}>Contact</ThemedText>
-                </TouchableOpacity>
               </View>
             </View>
           </ThemedCard>
-
-          {!isOwner && currentAuction.status?.toLowerCase() === 'active' && (
-            <ThemedCard style={styles.bidCard}>
-              <ThemedText style={styles.sectionTitle}>Place Your Bid</ThemedText>
-              <View style={styles.bidInputContainer}>
-                <Ionicons name="cash" size={24} color={Colors.primary} style={styles.bidIcon} />
-                <ThemedTextInput
-                  style={styles.bidInput}
-                  placeholder="Enter bid amount"
-                  keyboardType="decimal-pad"
-                  value={currentBid}
-                  onChangeText={setCurrentBid}
-                />
-                <ThemedButton
-                  onPress={handlePlaceBid}
-                  disabled={!currentBid}
-                  style={styles.bidButton}
-                >
-                  <ThemedText style={styles.bidButtonText}>Place Bid</ThemedText>
-                </ThemedButton>
-              </View>
-              <ThemedText style={styles.bidHint}>
-                Minimum bid: {formatPrice(currentAuction.startingPrice)}
-              </ThemedText>
-            </ThemedCard>
-          )}
 
           {isOwner && (
             <ThemedCard style={styles.ownerActionsCard}>
@@ -314,6 +341,53 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     padding: 5,
+  },
+  mainImageContainer: {
+    position: 'relative',
+    height: 300,
+    width: '100%',
+    backgroundColor: '#f5f5f5',
+  },
+  mainImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  imageCounterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  thumbnailContainer: {
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+  },
+  thumbnailScrollContent: {
+    paddingHorizontal: 10,
+  },
+  thumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  thumbnailActive: {
+    borderColor: Colors.primary,
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
   },
   noImage: {
     height: 200,

@@ -38,7 +38,7 @@ const Login = () => {
           'Your account needs verification. A new code has been sent to your email.',
           [{ 
             text: 'Enter Code', 
-            onPress: () => router.replace('/(auth)/verify-account') 
+            onPress: () => router.replace('/verify-account') 
           }]
         );
         return;

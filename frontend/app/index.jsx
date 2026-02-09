@@ -1,4 +1,3 @@
-// app/index.jsx (Home)
 import { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
@@ -14,8 +13,6 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ThemedView from '../components/ThemedView';
 import ThemedText from '../components/ThemedText';
-import ThemedCard from '../components/ThemedCard';
-import Spacer from '../components/Spacer';
 import AuctionCard from '../components/AuctionCard';
 import { useAuth } from '../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../hooks/useAppDispatch';

@@ -27,9 +27,9 @@ export const fetchAuctionById = createAsyncThunk(
 
 export const createAuction = createAsyncThunk(
   'auction/create',
-  async ({ auctionData, photoFiles = [] }, { rejectWithValue }) => {
+  async ({ auctionData, photoFiles = [], currentUser }, { rejectWithValue }) => {
     try {
-      const auction = await auctionService.createAuction(auctionData, photoFiles);
+      const auction = await auctionService.createAuction(auctionData, photoFiles, currentUser);
       return auction;
     } catch (error) {
       return rejectWithValue(error.message);

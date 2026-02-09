@@ -140,46 +140,44 @@ const CreateAuction = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-    const handleSubmit = async () => {
-        if (!validateForm()) {
-            Alert.alert('Validation Error', 'Please fix the errors in the form');
-            return;
-        }
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      Alert.alert('Validation Error', 'Please fix the errors in the form');
+      return;
+    }
 
-        setLoading(true);
+    setLoading(true);
 
-        try {
-            const auctionData = {
-            title: formData.title,
-            description: formData.description,
-            startingPrice: parseFloat(formData.startingPrice),
-            category: formData.category,
-            status: 'active',
-            };
+    try {
+      const auctionData = {
+        title: formData.title,
+        description: formData.description,
+        startingPrice: formData.startingPrice,
+        category: formData.category,
+      };
 
-            console.log('Creating auction with data:', auctionData);
-            
-            await dispatch(createAuction({
-            auctionData,
-            photoFiles: selectedImages
-            })).unwrap();
-            
-            Alert.alert(
-            'Success',
-            'Auction created successfully!',
-            [{ text: 'OK', onPress: () => router.replace('/') }]
-            );
-            
-        } catch (error) {
-            console.error('Create auction error:', error);
-            Alert.alert(
-            'Error',
-            error.message || 'Failed to create auction. Please try again.'
-            );
-        } finally {
-            setLoading(false);
-        }
-        };
+      await dispatch(createAuction({
+        auctionData,
+        photoFiles: selectedImages,
+        currentUser: user // Pass current user to include as seller
+      })).unwrap();
+      
+      Alert.alert(
+        'Success',
+        'Auction created successfully!',
+        [{ text: 'OK', onPress: () => router.replace('/') }]
+      );
+      
+    } catch (error) {
+      console.error('Create auction error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to create auction. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

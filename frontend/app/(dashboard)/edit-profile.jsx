@@ -5,7 +5,8 @@ import {
   Alert, 
   Keyboard, 
   TouchableOpacity,
-  Image 
+  Image,
+  ActivityIndicator
 } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
@@ -41,6 +42,8 @@ const EditProfile = () => {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [userPhotoUrl, setUserPhotoUrl] = useState(null);
+  const [photoRefreshing, setPhotoRefreshing] = useState(false);
 
   useEffect(() => {
     if (authUser?.id) {
@@ -56,13 +59,40 @@ const EditProfile = () => {
         cin: userData.cin ? String(userData.cin) : '',
         email: userData.email || authUser?.email || '',
       });
+      
+      if (userData.photoId) {
+        loadUserPhoto();
+      } else {
+        setUserPhotoUrl(null);
+      }
     }
   }, [userData]);
 
   const loadUserData = async () => {
     try {
       await dispatch(fetchUserById(authUser.id)).unwrap();
-    } catch (error) {}
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
+
+  const loadUserPhoto = async () => {
+    if (!userData?.photoId) {
+      setUserPhotoUrl(null);
+      return;
+    }
+
+    try {
+      setPhotoRefreshing(true);
+      // Get fresh photo URL with timestamp to prevent caching
+      const photoUrl = `${userService.getUserPhotoUrl(userData.id, userData.photoId)}?t=${Date.now()}`;
+      setUserPhotoUrl(photoUrl);
+    } catch (error) {
+      console.error('Error loading user photo:', error);
+      setUserPhotoUrl(null);
+    } finally {
+      setPhotoRefreshing(false);
+    }
   };
 
   const pickImage = async () => {
@@ -163,18 +193,17 @@ const EditProfile = () => {
     }
   };
 
-  const getUserPhotoUrl = () => {
-    if (selectedImage) {
-      return selectedImage.uri;
-    }
-    if (userData?.photoId) {
-      return userService.getUserPhotoUrl(authUser.id, userData.photoId);
-    }
-    return null;
-  };
-
   const handleResetPassword = () => {
     router.push('/reset-password');
+  };
+
+  const refreshPhoto = () => {
+    loadUserPhoto();
+  };
+
+  const displayInitial = () => {
+    const name = formData.firstname || userData?.firstname || authUser?.email || 'U';
+    return name.charAt(0).toUpperCase();
   };
 
   return (
@@ -206,20 +235,37 @@ const EditProfile = () => {
               <TouchableOpacity 
                 style={styles.photoContainer}
                 onPress={pickImage}
+                disabled={photoRefreshing}
               >
-                {getUserPhotoUrl() ? (
+                {selectedImage ? (
                   <Image 
-                    source={{ uri: getUserPhotoUrl() }} 
+                    source={{ uri: selectedImage.uri }} 
                     style={styles.profilePhoto}
+                  />
+                ) : userPhotoUrl && !photoRefreshing ? (
+                  <Image 
+                    source={{ uri: userPhotoUrl }} 
+                    style={styles.profilePhoto}
+                    onError={() => setUserPhotoUrl(null)}
                   />
                 ) : (
                   <View style={styles.defaultPhoto}>
-                    <Ionicons name="person" size={40} color="#666" />
+                    {photoRefreshing ? (
+                      <ActivityIndicator size="large" color={Colors.primary} />
+                    ) : (
+                      <ThemedText style={styles.defaultPhotoText}>
+                        {displayInitial()}
+                      </ThemedText>
+                    )}
                   </View>
                 )}
                 
                 <View style={styles.photoEditButton}>
-                  <Ionicons name="camera" size={18} color="#fff" />
+                  {photoRefreshing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="camera" size={18} color="#fff" />
+                  )}
                 </View>
               </TouchableOpacity>
               
@@ -227,20 +273,40 @@ const EditProfile = () => {
                 Profile Photo
               </ThemedText>
               
-              {selectedImage && (
-                <TouchableOpacity 
-                  style={styles.removePhotoButton}
-                  onPress={removeImage}
-                >
-                  <Ionicons name="trash" size={16} color={Colors.warning} />
-                  <ThemedText style={styles.removePhotoText}>
-                    Remove new photo
-                  </ThemedText>
-                </TouchableOpacity>
-              )}
+              <View style={styles.photoActions}>
+                {userData?.photoId && !selectedImage && (
+                  <TouchableOpacity 
+                    style={styles.refreshPhotoButton}
+                    onPress={refreshPhoto}
+                    disabled={photoRefreshing}
+                  >
+                    <Ionicons 
+                      name={photoRefreshing ? "refresh" : "refresh-outline"} 
+                      size={16} 
+                      color={photoRefreshing ? "#999" : Colors.primary} 
+                    />
+                    <ThemedText style={[
+                      styles.refreshPhotoText,
+                      photoRefreshing && styles.refreshPhotoTextDisabled
+                    ]}>
+                      Refresh
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+                
+                {selectedImage && (
+                  <TouchableOpacity 
+                    style={styles.removePhotoButton}
+                    onPress={removeImage}
+                  >
+                    <Ionicons name="trash" size={16} color={Colors.warning} />
+                    <ThemedText style={styles.removePhotoText}>
+                      Remove new photo
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-
-            <Spacer height={30} />
 
             <View style={styles.section}>
               <ThemedText title style={styles.sectionTitle}>
@@ -409,11 +475,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 50,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
     borderColor: Colors.primary,
+  },
+  defaultPhotoText: {
+    color: '#fff',
+    fontSize: 36,
+    fontWeight: 'bold',
   },
   photoEditButton: {
     position: 'absolute',
@@ -432,6 +503,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.8,
     marginBottom: 5,
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 15,
+    marginTop: 10,
+  },
+  refreshPhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 5,
+  },
+  refreshPhotoText: {
+    fontSize: 12,
+    color: Colors.primary,
+    marginLeft: 5,
+  },
+  refreshPhotoTextDisabled: {
+    color: '#999',
   },
   removePhotoButton: {
     flexDirection: 'row',
