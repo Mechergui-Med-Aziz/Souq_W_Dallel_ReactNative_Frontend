@@ -1,7 +1,6 @@
 import axiosInstance from '../../lib/axios';
 import { API_ENDPOINTS, API_BASE_URL } from '../../constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { userService } from './userService';
 
 export const auctionService = {
   getAllAuctions: async () => {
@@ -33,8 +32,8 @@ export const auctionService = {
       startingPrice: parseFloat(auctionData.startingPrice),
       Category: auctionData.category,
       status: 'active',
-      bidders: {}, // Empty bidders object
-      seller: sellerObject // Include seller in the auction
+      bidders: {},
+      seller: sellerObject
     };
     
     formData.append('auction', JSON.stringify(auctionObject));

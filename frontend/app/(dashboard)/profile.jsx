@@ -116,6 +116,7 @@ const Profile = () => {
     }
   };
 
+  // For futur use
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     

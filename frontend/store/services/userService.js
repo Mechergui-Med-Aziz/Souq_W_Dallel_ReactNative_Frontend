@@ -61,7 +61,6 @@ export const userService = {
     return response.data;
   },
   
-  // New method to fetch user photo
   fetchUserPhoto: async (userId) => {
     try {
       const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.USER_PHOTO(userId)}`);

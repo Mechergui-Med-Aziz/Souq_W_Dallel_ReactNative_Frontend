@@ -25,7 +25,6 @@ import { useAuth } from '../hooks/useAuth';
 import { useAppDispatch } from '../hooks/useAppDispatch';
 import { createAuction } from '../store/slices/auctionSlice';
 import { Colors } from '../constants/Colors';
-import axiosInstance from '../lib/axios';
 
 const CreateAuction = () => {
   const router = useRouter();
@@ -159,7 +158,7 @@ const CreateAuction = () => {
       await dispatch(createAuction({
         auctionData,
         photoFiles: selectedImages,
-        currentUser: user // Pass current user to include as seller
+        currentUser: user
       })).unwrap();
       
       Alert.alert(
