@@ -7,13 +7,75 @@ import { Colors } from '../constants/Colors';
 import { auctionService } from '../store/services/auctionService';
 import { userService } from '../store/services/userService';
 
+const categories = {
+  'electronics': { label: 'Électronique', icon: 'tv-outline' },
+  'furniture': { label: 'Meubles', icon: 'bed-outline' },
+  'vehicles': { label: 'Véhicules', icon: 'car-outline' },
+  'real-estate': { label: 'Immobilier', icon: 'home-outline' },
+  'collectibles': { label: 'Collection', icon: 'albums-outline' },
+  'art': { label: 'Art', icon: 'color-palette-outline' },
+  'jewelry': { label: 'Bijoux', icon: 'diamond-outline' },
+  'clothing': { label: 'Vêtements', icon: 'shirt-outline' },
+  'sports': { label: 'Sports', icon: 'basketball-outline' },
+  'general': { label: 'Général', icon: 'apps-outline' },
+};
+
 const AuctionCard = ({ auction, onPress }) => {
   const [photoUrl, setPhotoUrl] = useState(null);
   const [sellerDetails, setSellerDetails] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState('');
+  const [isExpired, setIsExpired] = useState(false);
   
   useEffect(() => {
     loadAuctionData();
+    if (auction?.expireDate) {
+      checkExpiration();
+      const timer = setInterval(checkExpiration, 60000); // Check every minute
+      return () => clearInterval(timer);
+    }
   }, [auction]);
+
+  const checkExpiration = () => {
+    if (!auction?.expireDate) return;
+    
+    const now = new Date();
+    const expiration = new Date(auction.expireDate);
+    const expired = now >= expiration;
+    
+    setIsExpired(expired);
+    
+    if (!expired) {
+      calculateTimeRemaining();
+    } else {
+      setTimeRemaining('Expiré');
+    }
+  };
+
+  const calculateTimeRemaining = () => {
+    if (!auction?.expireDate) return;
+    
+    const now = new Date();
+    const expiration = new Date(auction.expireDate);
+    
+    if (now >= expiration) {
+      setTimeRemaining('Expiré');
+      setIsExpired(true);
+      return;
+    }
+    
+    const diffMs = expiration - now;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffDays > 0) {
+      setTimeRemaining(`${diffDays}j ${diffHours}h`);
+    } else if (diffHours > 0) {
+      setTimeRemaining(`${diffHours}h ${diffMinutes}m`);
+    } else {
+      setTimeRemaining(`${diffMinutes}m`);
+    }
+  };
 
   const loadAuctionData = async () => {
     // Load auction photo
@@ -28,14 +90,7 @@ const AuctionCard = ({ auction, onPress }) => {
 
   const loadSellerDetails = async () => {
     try {
-      // If auction already has full seller object
-      if (auction.seller && typeof auction.seller === 'object') {
-        setSellerDetails(auction.seller);
-        return;
-      }
-      
-      // If auction has sellerId, fetch seller
-      const sellerId = auction.sellerId || auction.seller;
+      const sellerId = auction.sellerId;
       if (sellerId) {
         const seller = await userService.getUserById(sellerId);
         setSellerDetails(seller);
@@ -49,10 +104,12 @@ const AuctionCard = ({ auction, onPress }) => {
   };
 
   const formatPrice = (price) => {
-    return `$${price?.toFixed(2) || '0.00'}`;
+    return `${price?.toFixed(2) || '0.00'} TND`;
   };
 
   const getStatusColor = (status) => {
+    if (isExpired) return '#ef4444';
+    
     switch (status?.toLowerCase()) {
       case 'active': return '#4ade80';
       case 'pending': return '#fbbf24';
@@ -61,9 +118,14 @@ const AuctionCard = ({ auction, onPress }) => {
     }
   };
 
+  const getStatusText = () => {
+    if (isExpired) return 'Expiré';
+    return auction.status || 'Actif';
+  };
+
   const getSellerName = () => {
-    if (!sellerDetails) return 'Unknown Seller';
-    return `${sellerDetails.firstname || ''} ${sellerDetails.lastname || ''}`.trim() || sellerDetails.email || 'Unknown';
+    if (!sellerDetails) return 'Vendeur inconnu';
+    return `${sellerDetails.firstname || ''} ${sellerDetails.lastname || ''}`.trim() || sellerDetails.email || 'Inconnu';
   };
 
   const getSellerInitial = () => {
@@ -71,6 +133,23 @@ const AuctionCard = ({ auction, onPress }) => {
     const name = sellerDetails.firstname || sellerDetails.email || 'U';
     return name.charAt(0).toUpperCase();
   };
+
+  const getCategoryInfo = () => {
+    if (!auction?.category) return null;
+    return categories[auction.category] || categories.general;
+  };
+
+  const formatExpirationDate = () => {
+    if (!auction?.expireDate) return 'Date non définie';
+    const date = new Date(auction.expireDate);
+    return date.toLocaleDateString('fr-FR') + ' ' + 
+           date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const categoryInfo = getCategoryInfo();
+
+  // Don't render if expired (optional - remove this if you want to show expired auctions)
+  // if (isExpired) return null;
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
@@ -91,7 +170,7 @@ const AuctionCard = ({ auction, onPress }) => {
           <View style={styles.topBadges}>
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(auction.status) }]}>
               <ThemedText style={styles.statusText}>
-                {auction.status || 'Active'}
+                {getStatusText()}
               </ThemedText>
             </View>
           </View>
@@ -102,48 +181,59 @@ const AuctionCard = ({ auction, onPress }) => {
               {auction.bidders ? Object.keys(auction.bidders).length : 0}
             </ThemedText>
           </View>
+
+          
         </View>
         
         <View style={styles.detailsContainer}>
           <ThemedText title style={styles.auctionTitle} numberOfLines={1}>
-            {auction.title || 'Untitled Auction'}
+            {auction.title || 'Sans titre'}
           </ThemedText>
           
           <ThemedText style={styles.auctionDescription} numberOfLines={2}>
-            {auction.description || 'No description available'}
+            {auction.description || 'Aucune description'}
           </ThemedText>
           
           <View style={styles.priceContainer}>
             <View>
               <ThemedText style={styles.startingPriceLabel}>
-                Starting Price
+                Prix de départ
               </ThemedText>
               <ThemedText title style={styles.startingPrice}>
                 {formatPrice(auction.startingPrice)}
               </ThemedText>
             </View>
-            
-            <View style={styles.timeContainer}>
-              <Ionicons name="time-outline" size={16} color="#666" />
-              <ThemedText style={styles.timeText}>
-                {auction.timeLeft || '24h left'}
-              </ThemedText>
-            </View>
+
+            {timeRemaining && (
+              <View style={[styles.timeBadge, isExpired && styles.expiredBadge]}>
+                <Ionicons 
+                  name={isExpired ? "close-circle" : "time-outline"} 
+                  size={12} 
+                  color="#fff" 
+                />
+                <ThemedText style={styles.timeBadgeText}>
+                  {timeRemaining}
+                </ThemedText>
+              </View>
+            )}
+
           </View>
           
-          <View style={styles.sellerContainer}>
-            <View style={styles.sellerAvatar}>
-              <ThemedText style={styles.sellerInitial}>
-                {getSellerInitial()}
-              </ThemedText>
-            </View>
-            <View style={styles.sellerInfo}>
-              <ThemedText style={styles.sellerLabel}>
-                Seller
-              </ThemedText>
-              <ThemedText style={styles.sellerName} numberOfLines={1}>
-                {getSellerName()}
-              </ThemedText>
+          <View style={styles.footer}>
+            <View style={styles.sellerContainer}>
+              <View style={styles.sellerAvatar}>
+                <ThemedText style={styles.sellerInitial}>
+                  {getSellerInitial()}
+                </ThemedText>
+              </View>
+              <View style={styles.sellerInfo}>
+                <ThemedText style={styles.sellerLabel}>
+                  Vendeur
+                </ThemedText>
+                <ThemedText style={styles.sellerName} numberOfLines={1}>
+                  {getSellerName()}
+                </ThemedText>
+              </View>
             </View>
           </View>
         </View>
@@ -195,20 +285,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(104, 73, 167, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  categoryBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
   bidCountBadge: {
     position: 'absolute',
     top: 10,
@@ -223,6 +299,26 @@ const styles = StyleSheet.create({
   bidCountText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  timeBadge: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  expiredBadge: {
+    backgroundColor: '#ef4444',
+  },
+  timeBadgeText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '600',
     marginLeft: 4,
   },
@@ -259,22 +355,28 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: Colors.primary,
   },
-  timeContainer: {
+  expirationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 5,
   },
-  timeText: {
+  expirationText: {
     fontSize: 12,
-    opacity: 0.8,
-    marginLeft: 4,
+    color: '#666',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   sellerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   sellerAvatar: {
     width: 40,

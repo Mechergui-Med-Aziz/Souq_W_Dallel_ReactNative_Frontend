@@ -31,7 +31,17 @@ const Register = () => {
 
   const handleSubmit = async () => {
     if (!formData.firstname || !formData.lastname || !formData.cin || !formData.email || !formData.password) {
-      Alert.alert('Error', 'Please fill all required fields');
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+    
+    if (formData.cin.length !== 8) {
+      Alert.alert('Erreur', 'Le CIN doit contenir 8 chiffres');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
     
@@ -50,17 +60,17 @@ const Register = () => {
         await AsyncStorage.setItem('pendingRegistrationPassword', formData.password);
         
         Alert.alert(
-          'Registration Successful!',
-          `A verification code has been sent to ${formData.email}. You will be logged in automatically after verification.`,
+          'Inscription réussie !',
+          `Un code de vérification a été envoyé à ${formData.email}. Vous serez automatiquement connecté après vérification.`,
           [{ 
-            text: 'Verify Now', 
+            text: 'Vérifier maintenant', 
             onPress: () => router.replace('/verify-account') 
           }]
         );
       }
       
     } catch (err) {
-      Alert.alert('Registration Failed', err || 'Please try again.');
+      Alert.alert('Échec de l\'inscription', err || 'Veuillez réessayer.');
     }
   };
 
@@ -70,27 +80,28 @@ const Register = () => {
         <Spacer height={40} />
         
         <ThemedText title={true} style={styles.title}>
-          Register
+          Inscription
         </ThemedText>
 
         <ThemedTextInput
           style={styles.input}
-          placeholder="First Name"
+          placeholder="Prénom"
           onChangeText={(value) => handleChange('firstname', value)}
           value={formData.firstname}
         />
 
         <ThemedTextInput
           style={styles.input}
-          placeholder="Last Name"
+          placeholder="Nom"
           onChangeText={(value) => handleChange('lastname', value)}
           value={formData.lastname}
         />
 
         <ThemedTextInput
           style={styles.input}
-          placeholder="CIN"
+          placeholder="CIN (8 chiffres)"
           keyboardType="numeric"
+          maxLength={8}
           onChangeText={(value) => handleChange('cin', value)}
           value={formData.cin}
         />
@@ -106,7 +117,7 @@ const Register = () => {
 
         <ThemedTextInput
           style={styles.input}
-          placeholder="Password"
+          placeholder="Mot de passe (min. 6 caractères)"
           autoCapitalize="none"
           onChangeText={(value) => handleChange('password', value)}
           value={formData.password}
@@ -119,7 +130,7 @@ const Register = () => {
           style={loading && styles.disabledButton}
         >
           <Text style={{ color: '#f2f2f2'}}>
-            {loading ? 'Registering...' : 'Register'}
+            {loading ? 'Inscription...' : "S'inscrire"}
           </Text>
         </ThemedButton>
 
@@ -131,7 +142,7 @@ const Register = () => {
 
         <TouchableOpacity onPress={() => router.push('/login')}>
           <ThemedText style={{ textAlign: 'center'}}>
-            Already have an account? Login
+            Déjà un compte ? Se connecter
           </ThemedText>
         </TouchableOpacity>
 
@@ -139,7 +150,7 @@ const Register = () => {
 
         <TouchableOpacity onPress={() => router.push('/reset-password')}>
           <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
-            Forgot Password?
+            Mot de passe oublié ?
           </ThemedText>
         </TouchableOpacity>
       </ThemedView>

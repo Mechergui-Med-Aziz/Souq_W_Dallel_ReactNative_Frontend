@@ -19,7 +19,7 @@ const Login = () => {
 
   const handleSubmit = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password');
+      Alert.alert('Erreur', 'Veuillez entrer votre email et mot de passe');
       return;
     }
     
@@ -34,10 +34,10 @@ const Login = () => {
         }
         
         Alert.alert(
-          'Verification Required',
-          'Your account needs verification. A new code has been sent to your email.',
+          'Vérification requise',
+          'Votre compte nécessite une vérification. Un nouveau code a été envoyé à votre email.',
           [{ 
-            text: 'Enter Code', 
+            text: 'Entrer le code', 
             onPress: () => router.replace('/verify-account') 
           }]
         );
@@ -45,12 +45,12 @@ const Login = () => {
       }
       
     } catch (err) {
-      let errorMessage = 'Login failed. Please check your credentials.';
+      let errorMessage = 'Échec de la connexion. Vérifiez vos identifiants.';
       if (err && err.includes && err.includes('No response')) {
-        errorMessage = 'Cannot connect to server. Please check your connection.';
+        errorMessage = 'Impossible de contacter le serveur. Vérifiez votre connexion.';
       }
       
-      Alert.alert('Login Error', errorMessage);
+      Alert.alert('Erreur de connexion', errorMessage);
     }
   };
 
@@ -59,7 +59,7 @@ const Login = () => {
       <Spacer height={40} />
       
       <ThemedText title={true} style={styles.title}>
-        Login
+        Connexion
       </ThemedText>
 
       <ThemedTextInput
@@ -73,7 +73,7 @@ const Login = () => {
 
       <ThemedTextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Mot de passe"
         onChangeText={setPassword}
         value={password}
         secureTextEntry
@@ -85,7 +85,7 @@ const Login = () => {
         style={loading && styles.disabledButton}
       >
         <Text style={{ color: '#f2f2f2'}}>
-          {loading ? 'Logging in...' : 'Login'}
+          {loading ? 'Connexion...' : 'Se connecter'}
         </Text>
       </ThemedButton>
 
@@ -101,7 +101,7 @@ const Login = () => {
 
       <Link href='/register'>
         <ThemedText style={{ textAlign: 'center'}}>
-          Don't have an account? Register
+          Pas encore de compte ? S'inscrire
         </ThemedText>
       </Link>
 
@@ -109,7 +109,7 @@ const Login = () => {
 
       <TouchableOpacity onPress={() => router.push('/reset-password')}>
         <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
-          Forgot Password?
+          Mot de passe oublié ?
         </ThemedText>
       </TouchableOpacity>
     </ThemedView>

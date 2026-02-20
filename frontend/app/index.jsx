@@ -13,11 +13,27 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import ThemedView from '../components/ThemedView';
 import ThemedText from '../components/ThemedText';
+import ThemedCard from '../components/ThemedCard';
+import Spacer from '../components/Spacer';
 import AuctionCard from '../components/AuctionCard';
 import { useAuth } from '../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../hooks/useAppDispatch';
 import { fetchAllAuctions } from '../store/slices/auctionSlice';
 import { Colors } from '../constants/Colors';
+
+const categories = [
+  { id: 'all', label: 'All', icon: 'apps-outline' },
+  { id: 'electronics', label: 'Electronics', icon: 'tv-outline' },
+  { id: 'furniture', label: 'Furniture', icon: 'bed-outline' },
+  { id: 'vehicles', label: 'Vehicles', icon: 'car-outline' },
+  { id: 'real-estate', label: 'Real Estate', icon: 'home-outline' },
+  { id: 'collectibles', label: 'Collectibles', icon: 'albums-outline' },
+  { id: 'art', label: 'Art', icon: 'color-palette-outline' },
+  { id: 'jewelry', label: 'Jewelry', icon: 'diamond-outline' },
+  { id: 'clothing', label: 'Clothing', icon: 'shirt-outline' },
+  { id: 'sports', label: 'Sports', icon: 'basketball-outline' },
+  { id: 'general', label: 'General', icon: 'apps-outline' },
+];
 
 const Home = () => {
   const router = useRouter();
@@ -55,17 +71,22 @@ const Home = () => {
     const matchesCategory = selectedCategory === 'all' || 
       auction.category === selectedCategory;
     
-    return matchesSearch && matchesCategory;
+    // Check if auction is expired
+    const now = new Date();
+    const isExpired = auction.expireDate && new Date(auction.expireDate) <= now;
+    
+    // Only show active (not expired) auctions on home page
+    const isActive = !isExpired && auction.status?.toLowerCase() === 'active';
+    
+    return matchesSearch && matchesCategory && isActive;
   });
 
-  const categories = [
-    { id: 'all', label: 'All' },
-    { id: 'electronics', label: 'Electronics' },
-    { id: 'furniture', label: 'Furniture' },
-    { id: 'vehicles', label: 'Vehicles' },
-    { id: 'real-estate', label: 'Real Estate' },
-    { id: 'collectibles', label: 'Collectibles' },
-  ];
+  const getUserPhotoUrl = () => {
+    if (user?.id) {
+      return `http://10.13.248.28:8080/api/users/${user.id}/photo`;
+    }
+    return null;
+  };
 
   const displayName = user?.firstname && user?.lastname 
     ? `${user.firstname} ${user.lastname}`
@@ -73,6 +94,7 @@ const Home = () => {
 
   return (
     <ThemedView safe style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoContainer}>
           <Ionicons name="hammer" size={32} color={Colors.primary} />
@@ -95,15 +117,23 @@ const Home = () => {
           </View>
           
           <View style={styles.photoContainer}>
-            <View style={styles.defaultPhoto}>
-              <ThemedText style={styles.defaultPhotoText}>
-                {displayName.charAt(0).toUpperCase()}
-              </ThemedText>
-            </View>
+            {getUserPhotoUrl() ? (
+              <Image 
+                source={{ uri: getUserPhotoUrl() }} 
+                style={styles.profilePhoto}
+              />
+            ) : (
+              <View style={styles.defaultPhoto}>
+                <ThemedText style={styles.defaultPhotoText}>
+                  {displayName.charAt(0).toUpperCase()}
+                </ThemedText>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
       </View>
 
+      {/* Search */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
@@ -120,11 +150,14 @@ const Home = () => {
             </TouchableOpacity>
           ) : null}
         </View>
-        
+      </View>
+
+      {/* Category Filters - All categories with icons */}
+      <View style={styles.categoriesWrapper}>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
-          style={styles.categoriesContainer}
+          contentContainerStyle={styles.categoriesContainer}
         >
           {categories.map(category => (
             <TouchableOpacity
@@ -135,6 +168,11 @@ const Home = () => {
               ]}
               onPress={() => setSelectedCategory(category.id)}
             >
+              <Ionicons 
+                name={category.icon} 
+                size={18} 
+                color={selectedCategory === category.id ? '#fff' : '#666'} 
+              />
               <ThemedText style={[
                 styles.categoryText,
                 selectedCategory === category.id && styles.categoryTextActive
@@ -146,12 +184,7 @@ const Home = () => {
         </ScrollView>
       </View>
 
-      <View style={styles.actionsBar}>
-        <ThemedText title style={styles.sectionTitle}>
-          Live Auctions
-        </ThemedText>
-      </View>
-
+      {/* Auctions List */}
       <FlatList
         data={filteredAuctions}
         keyExtractor={(item) => item.id}
@@ -232,6 +265,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: '#f0f0f0',
   },
+  profilePhoto: {
+    width: '100%',
+    height: '100%',
+  },
   defaultPhoto: {
     width: '100%',
     height: '100%',
@@ -246,8 +283,8 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 10,
+    paddingTop: 5,
+    paddingBottom: 8,
   },
   searchBar: {
     flexDirection: 'row',
@@ -255,26 +292,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     borderRadius: 10,
     paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginBottom: 15,
+    paddingVertical: 5,
   },
   searchIcon: {
     marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
   },
+  categoriesWrapper: {
+    marginBottom: 15,
+  },
   categoriesContainer: {
-    marginBottom: 5,
+    paddingHorizontal: 20,
+    gap: 10,
   },
   categoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
-    marginRight: 10,
+    gap: 6,
   },
   categoryButtonActive: {
     backgroundColor: Colors.primary,
@@ -287,22 +329,27 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  actionsBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  createButtonContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginBottom: 15,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  createButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   auctionsList: {
     padding: 20,
-    paddingTop: 10,
+    paddingTop: 0,
   },
   emptyContainer: {
     alignItems: 'center',

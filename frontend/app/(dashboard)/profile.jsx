@@ -168,34 +168,6 @@ const Profile = () => {
     }
   };
 
-  const removePhoto = async () => {
-    if (!authUser?.id) return;
-
-    Alert.alert(
-      'Remove Photo',
-      'Are you sure you want to remove your profile photo?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dispatch(deleteUserPhoto(authUser.id)).unwrap();
-              // Reload user data
-              await loadUserDataAndPhoto();
-              Alert.alert('Success', 'Profile photo removed successfully!');
-              setUserPhotoUrl(null);
-            } catch (error) {
-              console.error('Error removing photo:', error);
-              Alert.alert('Error', 'Failed to remove photo. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
   const handleEditProfile = () => {
     router.push('/(dashboard)/edit-profile');
   };
@@ -333,20 +305,7 @@ const Profile = () => {
             <ThemedText style={styles.userEmail}>
               {displayEmail}
             </ThemedText>
-            
-            <View style={styles.photoActions}>
-              
-              {userData?.photoId && (
-                <TouchableOpacity 
-                  style={styles.photoActionButton}
-                  onPress={removePhoto}
-                  disabled={photoRefreshing}
-                >
-                  <Ionicons name="trash-outline" size={16} color={Colors.warning} />
-                  <ThemedText style={styles.photoActionText}>Remove Photo</ThemedText>
-                </TouchableOpacity>
-              )}
-            </View>
+                          
           </ThemedCard>
 
           <Spacer height={20} />

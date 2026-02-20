@@ -27,9 +27,9 @@ export const fetchAuctionById = createAsyncThunk(
 
 export const createAuction = createAsyncThunk(
   'auction/create',
-  async ({ auctionData, photoFiles = [], currentUser }, { rejectWithValue }) => {
+  async ({ auctionData, photoFiles = [], userId }, { rejectWithValue }) => {
     try {
-      const auction = await auctionService.createAuction(auctionData, photoFiles, currentUser);
+      const auction = await auctionService.createAuction(auctionData, photoFiles, userId);
       return auction;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -42,6 +42,18 @@ export const updateAuction = createAsyncThunk(
   async ({ auctionId, auctionData }, { rejectWithValue }) => {
     try {
       const auction = await auctionService.updateAuction(auctionId, auctionData);
+      return auction;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const updateAuctionWithPhotos = createAsyncThunk(
+  'auction/updateWithPhotos',
+  async ({ auctionId, auctionData, photoFiles = [], removedPhotoIds = [] }, { rejectWithValue }) => {
+    try {
+      const auction = await auctionService.updateAuction(auctionId, auctionData, photoFiles, removedPhotoIds);
       return auction;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -73,6 +85,22 @@ export const fetchUserAuctions = createAsyncThunk(
   }
 );
 
+const updateExpiredStatus = (auction) => {
+  if (!auction || !auction.expireDate) return auction;
+  
+  const now = new Date();
+  const expiration = new Date(auction.expireDate);
+  
+  if (now >= expiration && auction.status !== 'ended') {
+    return {
+      ...auction,
+      status: 'ended'
+    };
+  }
+  
+  return auction;
+};
+
 const auctionSlice = createSlice({
   name: 'auction',
   initialState: {
@@ -101,32 +129,37 @@ const auctionSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // fetchAllAuctions
       .addCase(fetchAllAuctions.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchAllAuctions.fulfilled, (state, action) => {
         state.loading = false;
-        state.auctions = action.payload || [];
+        // Update expired status for all auctions
+        state.auctions = (action.payload || []).map(updateExpiredStatus);
       })
       .addCase(fetchAllAuctions.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
       
+      // fetchAuctionById
       .addCase(fetchAuctionById.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchAuctionById.fulfilled, (state, action) => {
         state.loading = false;
-        state.currentAuction = action.payload;
+        // Update expired status for current auction
+        state.currentAuction = updateExpiredStatus(action.payload);
       })
       .addCase(fetchAuctionById.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
       
+      // createAuction
       .addCase(createAuction.pending, (state) => {
         state.creating = true;
         state.error = null;
@@ -134,7 +167,9 @@ const auctionSlice = createSlice({
       .addCase(createAuction.fulfilled, (state, action) => {
         state.creating = false;
         if (action.payload) {
-          state.auctions.unshift(action.payload);
+          const auctionWithStatus = updateExpiredStatus(action.payload);
+          state.auctions.unshift(auctionWithStatus);
+          state.userAuctions.unshift(auctionWithStatus);
         }
       })
       .addCase(createAuction.rejected, (state, action) => {
@@ -142,6 +177,7 @@ const auctionSlice = createSlice({
         state.error = action.payload;
       })
       
+      // updateAuction
       .addCase(updateAuction.pending, (state) => {
         state.updating = true;
         state.error = null;
@@ -149,9 +185,23 @@ const auctionSlice = createSlice({
       .addCase(updateAuction.fulfilled, (state, action) => {
         state.updating = false;
         if (action.payload) {
-          const index = state.auctions.findIndex(a => a.id === action.payload.id);
+          const updatedAuction = updateExpiredStatus(action.payload);
+          
+          // Update in main auctions list
+          const index = state.auctions.findIndex(a => a.id === updatedAuction.id);
           if (index !== -1) {
-            state.auctions[index] = action.payload;
+            state.auctions[index] = updatedAuction;
+          }
+          
+          // Update in user auctions list
+          const userIndex = state.userAuctions.findIndex(a => a.id === updatedAuction.id);
+          if (userIndex !== -1) {
+            state.userAuctions[userIndex] = updatedAuction;
+          }
+          
+          // Update current auction if it's the same one
+          if (state.currentAuction?.id === updatedAuction.id) {
+            state.currentAuction = updatedAuction;
           }
         }
       })
@@ -160,6 +210,40 @@ const auctionSlice = createSlice({
         state.error = action.payload;
       })
       
+      // updateAuctionWithPhotos
+      .addCase(updateAuctionWithPhotos.pending, (state) => {
+        state.updating = true;
+        state.error = null;
+      })
+      .addCase(updateAuctionWithPhotos.fulfilled, (state, action) => {
+        state.updating = false;
+        if (action.payload) {
+          const updatedAuction = updateExpiredStatus(action.payload);
+          
+          // Update in main auctions list
+          const index = state.auctions.findIndex(a => a.id === updatedAuction.id);
+          if (index !== -1) {
+            state.auctions[index] = updatedAuction;
+          }
+          
+          // Update in user auctions list
+          const userIndex = state.userAuctions.findIndex(a => a.id === updatedAuction.id);
+          if (userIndex !== -1) {
+            state.userAuctions[userIndex] = updatedAuction;
+          }
+          
+          // Update current auction if it's the same one
+          if (state.currentAuction?.id === updatedAuction.id) {
+            state.currentAuction = updatedAuction;
+          }
+        }
+      })
+      .addCase(updateAuctionWithPhotos.rejected, (state, action) => {
+        state.updating = false;
+        state.error = action.payload;
+      })
+      
+      // deleteAuction
       .addCase(deleteAuction.pending, (state) => {
         state.deleting = true;
         state.error = null;
@@ -174,13 +258,15 @@ const auctionSlice = createSlice({
         state.error = action.payload;
       })
       
+      // fetchUserAuctions
       .addCase(fetchUserAuctions.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchUserAuctions.fulfilled, (state, action) => {
         state.loading = false;
-        state.userAuctions = action.payload || [];
+        // Update expired status for user auctions
+        state.userAuctions = (action.payload || []).map(updateExpiredStatus);
       })
       .addCase(fetchUserAuctions.rejected, (state, action) => {
         state.loading = false;

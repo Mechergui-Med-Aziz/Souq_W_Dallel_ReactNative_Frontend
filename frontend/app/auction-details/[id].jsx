@@ -6,16 +6,13 @@ import {
   Image, 
   TouchableOpacity, 
   Alert,
-  Dimensions,
-  FlatList
+  Dimensions
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
-import ThemedTextInput from '../../components/ThemedTextInput';
-import ThemedButton from '../../components/ThemedButton';
 import ThemedCard from '../../components/ThemedCard';
 import Spacer from '../../components/Spacer';
 import { useAuth } from '../../hooks/useAuth';
@@ -23,8 +20,22 @@ import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { fetchAuctionById } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
 import { auctionService } from '../../store/services/auctionService';
+import { userService } from '../../store/services/userService';
 
 const { width: screenWidth } = Dimensions.get('window');
+
+const categories = {
+  'electronics': { label: 'Électronique', icon: 'tv-outline' },
+  'furniture': { label: 'Meubles', icon: 'bed-outline' },
+  'vehicles': { label: 'Véhicules', icon: 'car-outline' },
+  'real-estate': { label: 'Immobilier', icon: 'home-outline' },
+  'collectibles': { label: 'Collection', icon: 'albums-outline' },
+  'art': { label: 'Art', icon: 'color-palette-outline' },
+  'jewelry': { label: 'Bijoux', icon: 'diamond-outline' },
+  'clothing': { label: 'Vêtements', icon: 'shirt-outline' },
+  'sports': { label: 'Sports', icon: 'basketball-outline' },
+  'general': { label: 'Général', icon: 'apps-outline' },
+};
 
 const AuctionDetails = () => {
   const router = useRouter();
@@ -36,9 +47,10 @@ const AuctionDetails = () => {
   const { currentAuction, loading } = useAppSelector((state) => state.auction);
   
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [currentBid, setCurrentBid] = useState('');
-  const [isOwner, setIsOwner] = useState(false);
   const [auctionPhotos, setAuctionPhotos] = useState([]);
+  const [timeRemaining, setTimeRemaining] = useState('');
+  const [sellerDetails, setSellerDetails] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -47,9 +59,7 @@ const AuctionDetails = () => {
   }, [id]);
 
   useEffect(() => {
-    if (currentAuction && user) {
-      setIsOwner(currentAuction.seller?.id === user.id);
-      
+    if (currentAuction) {
       // Load auction photos
       if (currentAuction.photoId?.length > 0) {
         const photos = currentAuction.photoId.map(photoId => 
@@ -57,67 +67,88 @@ const AuctionDetails = () => {
         );
         setAuctionPhotos(photos);
       }
+
+      // Load seller details
+      loadSellerDetails();
+
+      // Calculate time remaining and check expiration
+      if (currentAuction.expireDate) {
+        checkExpiration();
+        const timer = setInterval(checkExpiration, 60000); // Update every minute
+        return () => clearInterval(timer);
+      }
     }
-  }, [currentAuction, user]);
+  }, [currentAuction]);
+
+  const checkExpiration = () => {
+    if (!currentAuction?.expireDate) return;
+    
+    const now = new Date();
+    const expiration = new Date(currentAuction.expireDate);
+    const expired = now >= expiration;
+    
+    setIsExpired(expired);
+    
+    if (!expired) {
+      calculateTimeRemaining();
+    } else {
+      setTimeRemaining('Expiré');
+    }
+  };
+
+  const calculateTimeRemaining = () => {
+    if (!currentAuction?.expireDate) return;
+    
+    const now = new Date();
+    const expiration = new Date(currentAuction.expireDate);
+    
+    if (now >= expiration) {
+      setTimeRemaining('Expiré');
+      setIsExpired(true);
+      return;
+    }
+    
+    const diffMs = expiration - now;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffDays > 0) {
+      setTimeRemaining(`${diffDays}j ${diffHours}h restantes`);
+    } else if (diffHours > 0) {
+      setTimeRemaining(`${diffHours}h ${diffMinutes}m restantes`);
+    } else {
+      setTimeRemaining(`${diffMinutes}m restantes`);
+    }
+  };
+
+  const loadSellerDetails = async () => {
+    try {
+      if (currentAuction?.sellerId) {
+        const seller = await userService.getUserById(currentAuction.sellerId);
+        setSellerDetails(seller);
+      }
+    } catch (error) {
+      console.error('Error loading seller details:', error);
+      setSellerDetails(null);
+    }
+  };
 
   const loadAuction = async () => {
     try {
       await dispatch(fetchAuctionById(id)).unwrap();
     } catch (error) {
-      console.error('Error loading auction:', error);
-      Alert.alert('Error', 'Failed to load auction details');
+      Alert.alert('Erreur', 'Échec du chargement des détails de l\'enchère');
     }
-  };
-
-  const handlePlaceBid = () => {
-    if (!currentBid || parseFloat(currentBid) <= (currentAuction?.startingPrice || 0)) {
-      Alert.alert('Invalid Bid', 'Bid must be higher than current price');
-      return;
-    }
-    
-    Alert.alert(
-      'Place Bid',
-      `Are you sure you want to place a bid of $${currentBid}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Place Bid', 
-          onPress: () => {
-            Alert.alert('Success', 'Your bid has been placed!');
-            setCurrentBid('');
-          }
-        }
-      ]
-    );
-  };
-
-  const handleEditAuction = () => {
-    router.push(`/edit-auction/${id}`);
-  };
-
-  const handleDeleteAuction = () => {
-    Alert.alert(
-      'Delete Auction',
-      'Are you sure you want to delete this auction? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert('Success', 'Auction deleted successfully!');
-            router.back();
-          }
-        }
-      ]
-    );
   };
 
   const formatPrice = (price) => {
-    return `$${price?.toFixed(2) || '0.00'}`;
+    return `${price?.toFixed(2) || '0.00'} TND`;
   };
 
   const getStatusColor = (status) => {
+    if (isExpired) return '#ef4444';
+    
     switch (status?.toLowerCase()) {
       case 'active': return '#4ade80';
       case 'pending': return '#fbbf24';
@@ -126,13 +157,54 @@ const AuctionDetails = () => {
     }
   };
 
+  const getStatusText = () => {
+    if (isExpired) return 'Expiré';
+    return currentAuction?.status || 'Actif';
+  };
+
+  const formatExpirationDate = (isoString) => {
+    if (!isoString) return 'Aucune date d\'expiration';
+    const date = new Date(isoString);
+    return date.toLocaleDateString('fr-FR') + ' à ' + 
+           date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatLongDate = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const getCategoryInfo = () => {
+    if (!currentAuction?.category) return null;
+    return categories[currentAuction.category] || categories.general;
+  };
+
+  const getSellerName = () => {
+    if (!sellerDetails) return 'Vendeur inconnu';
+    return `${sellerDetails.firstname || ''} ${sellerDetails.lastname || ''}`.trim() || sellerDetails.email || 'Inconnu';
+  };
+
+  const getSellerInitial = () => {
+    if (!sellerDetails) return 'V';
+    const name = sellerDetails.firstname || sellerDetails.email || 'Vendeur';
+    return name.charAt(0).toUpperCase();
+  };
+
   if (loading || !currentAuction) {
     return (
       <ThemedView safe style={styles.loadingContainer}>
-        <ThemedText>Loading auction details...</ThemedText>
+        <ThemedText>Chargement des détails...</ThemedText>
       </ThemedView>
     );
   }
+
+  const categoryInfo = getCategoryInfo();
 
   return (
     <ThemedView safe style={styles.container}>
@@ -146,15 +218,9 @@ const AuctionDetails = () => {
               <Ionicons name="arrow-back" size={24} color={theme.iconColorFocused} />
             </TouchableOpacity>
             <ThemedText title style={styles.headerTitle} numberOfLines={1}>
-              Auction Details
+              Détails de l'enchère
             </ThemedText>
-            <View style={styles.headerRight}>
-              {isOwner && (
-                <TouchableOpacity onPress={handleEditAuction} style={styles.headerIcon}>
-                  <Ionicons name="create-outline" size={22} color={theme.iconColorFocused} />
-                </TouchableOpacity>
-              )}
-            </View>
+            <View style={styles.headerRight} />
           </View>
         </View>
 
@@ -174,6 +240,13 @@ const AuctionDetails = () => {
                   </ThemedText>
                 </View>
               )}
+
+              {/* Status Badge on Image */}
+              <View style={[styles.imageStatusBadge, { backgroundColor: getStatusColor(currentAuction.status) }]}>
+                <ThemedText style={styles.imageStatusText}>
+                  {getStatusText()}
+                </ThemedText>
+              </View>
             </View>
             
             {auctionPhotos.length > 1 && (
@@ -206,7 +279,7 @@ const AuctionDetails = () => {
         ) : (
           <View style={styles.noImage}>
             <Ionicons name="image" size={80} color="#ccc" />
-            <ThemedText style={styles.noImageText}>No images available</ThemedText>
+            <ThemedText style={styles.noImageText}>Aucune image disponible</ThemedText>
           </View>
         )}
 
@@ -216,81 +289,75 @@ const AuctionDetails = () => {
               <ThemedText title style={styles.auctionTitle}>
                 {currentAuction.title}
               </ThemedText>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(currentAuction.status) }]}>
-                <ThemedText style={styles.statusText}>
-                  {currentAuction.status || 'Active'}
+            </View>
+
+            {/* Category Display */}
+            {categoryInfo && (
+              <View style={styles.categoryContainer}>
+                <Ionicons name={categoryInfo.icon} size={18} color={Colors.primary} />
+                <ThemedText style={styles.categoryText}>
+                  {categoryInfo.label}
                 </ThemedText>
               </View>
-            </View>
+            )}
 
             <View style={styles.priceSection}>
               <View>
-                <ThemedText style={styles.priceLabel}>Starting Price</ThemedText>
+                <ThemedText style={styles.priceLabel}>Prix de départ</ThemedText>
                 <ThemedText title style={styles.price}>
                   {formatPrice(currentAuction.startingPrice)}
                 </ThemedText>
               </View>
-              
-              <View style={styles.timeSection}>
-                <Ionicons name="time" size={20} color={Colors.primary} />
-                <ThemedText style={styles.timeText}>
-                  {currentAuction.timeLeft || '24h left'}
-                </ThemedText>
-              </View>
+            </View>
+
+            {/* Simple expiration container (keep for backward compatibility) */}
+            <View style={[styles.expirationContainer, isExpired && styles.expiredContainer]}>
+              <Ionicons 
+                name={isExpired ? "alert-circle" : "calendar"} 
+                size={16} 
+                color={isExpired ? "#fff" : "#666"} 
+              />
+              <ThemedText style={[styles.expirationText, isExpired && styles.expiredText]}>
+                {isExpired ? 'Enchère terminée' : `Se termine : ${formatExpirationDate(currentAuction.expireDate)}`}
+              </ThemedText>
             </View>
 
             <View style={styles.descriptionSection}>
               <ThemedText style={styles.sectionTitle}>Description</ThemedText>
               <ThemedText style={styles.description}>
-                {currentAuction.description || 'No description available.'}
+                {currentAuction.description || 'Aucune description disponible.'}
               </ThemedText>
             </View>
 
             <View style={styles.sellerSection}>
-              <ThemedText style={styles.sectionTitle}>Seller Information</ThemedText>
+              <ThemedText style={styles.sectionTitle}>Informations du vendeur</ThemedText>
               <View style={styles.sellerInfo}>
                 <View style={styles.sellerAvatar}>
                   <ThemedText style={styles.sellerInitial}>
-                    {currentAuction.seller?.firstname?.charAt(0)?.toUpperCase() || 'S'}
+                    {getSellerInitial()}
                   </ThemedText>
                 </View>
                 <View style={styles.sellerDetails}>
                   <ThemedText style={styles.sellerName}>
-                    {currentAuction.seller?.firstname || 'Unknown'} {currentAuction.seller?.lastname || ''}
+                    {getSellerName()}
                   </ThemedText>
                   <ThemedText style={styles.sellerEmail}>
-                    {currentAuction.seller?.email || 'No email'}
+                    {sellerDetails?.email || 'Email non disponible'}
                   </ThemedText>
                 </View>
               </View>
             </View>
-          </ThemedCard>
 
-          {isOwner && (
-            <ThemedCard style={styles.ownerActionsCard}>
-              <ThemedText style={styles.sectionTitle}>Auction Management</ThemedText>
-              <View style={styles.ownerButtons}>
-                <ThemedButton
-                  onPress={handleEditAuction}
-                  style={styles.ownerButton}
-                  variant="secondary"
-                >
-                  <Ionicons name="create" size={20} color={Colors.primary} />
-                  <ThemedText style={styles.ownerButtonText}>Edit Auction</ThemedText>
-                </ThemedButton>
-                
-                <ThemedButton
-                  onPress={handleDeleteAuction}
-                  style={[styles.ownerButton, styles.deleteButton]}
-                >
-                  <Ionicons name="trash" size={20} color="#fff" />
-                  <ThemedText style={[styles.ownerButtonText, styles.deleteButtonText]}>
-                    Delete Auction
-                  </ThemedText>
-                </ThemedButton>
+            {/* Bid Count */}
+            <View style={styles.bidSection}>
+              <View style={styles.bidCountContainer}>
+                <Ionicons name="people" size={20} color={Colors.primary} />
+                <ThemedText style={styles.bidCountText}>
+                  {currentAuction.bidders ? Object.keys(currentAuction.bidders).length : 0} enchères placées
+                </ThemedText>
               </View>
-            </ThemedCard>
-          )}
+            </View>
+          </ThemedCard>
 
           <Spacer height={40} />
         </View>
@@ -336,11 +403,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerIcon: {
-    padding: 5,
+    width: 40,
   },
   mainImageContainer: {
     position: 'relative',
@@ -362,6 +425,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   imageCounterText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  imageStatusBadge: {
+    position: 'absolute',
+    top: 15,
+    left: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  imageStatusText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
@@ -408,33 +484,33 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 15,
   },
   auctionTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    flex: 1,
-    marginRight: 10,
   },
-  statusBadge: {
-    paddingHorizontal: 12,
+  categoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
     paddingVertical: 6,
-    borderRadius: 15,
+    paddingHorizontal: 12,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 20,
+    alignSelf: 'flex-start',
   },
-  statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  categoryText: {
+    fontSize: 14,
+    marginLeft: 8,
+    color: '#666',
   },
   priceSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 25,
-    paddingBottom: 25,
+    marginBottom: 15,
+    paddingBottom: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -456,10 +532,65 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
   },
+  expiredTimeSection: {
+    backgroundColor: '#ef4444',
+  },
   timeText: {
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  expiredTimeText: {
+    color: '#fff',
+  },
+  expirationDetailContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    gap: 15,
+  },
+  expirationDetailText: {
+    flex: 1,
+  },
+  expirationDetailLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  expirationDetailValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 3,
+    textTransform: 'capitalize',
+  },
+  expirationDetailTime: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  expirationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    padding: 10,
+    backgroundColor: '#f0f8ff',
+    borderRadius: 8,
+  },
+  expiredContainer: {
+    backgroundColor: '#ef4444',
+  },
+  expirationText: {
+    fontSize: 14,
+    marginLeft: 8,
+    color: '#666',
+  },
+  expiredText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   sectionTitle: {
     fontSize: 16,
@@ -478,7 +609,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   sellerSection: {
-    marginBottom: 25,
+    marginBottom: 20,
   },
   sellerInfo: {
     flexDirection: 'row',
@@ -510,74 +641,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
   },
-  contactButton: {
+  bidSection: {
+    marginTop: 10,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  bidCountContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
   },
-  contactButtonText: {
+  bidCountText: {
     fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 5,
-    color: Colors.primary,
-  },
-  bidCard: {
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 20,
-  },
-  bidInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  bidIcon: {
-    marginRight: 10,
-  },
-  bidInput: {
-    flex: 1,
-    marginRight: 10,
-  },
-  bidButton: {
-    paddingHorizontal: 20,
-  },
-  bidButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  bidHint: {
-    fontSize: 12,
-    opacity: 0.7,
-    textAlign: 'center',
-  },
-  ownerActionsCard: {
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 20,
-  },
-  ownerButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 15,
-  },
-  ownerButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-  },
-  ownerButtonText: {
     marginLeft: 8,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    backgroundColor: Colors.warning,
-  },
-  deleteButtonText: {
-    color: '#fff',
+    color: '#666',
   },
 });

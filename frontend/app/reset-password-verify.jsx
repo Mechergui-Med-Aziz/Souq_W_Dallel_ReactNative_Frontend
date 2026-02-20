@@ -32,8 +32,9 @@ const ResetPasswordVerify = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [storedCode, setStoredCode] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userCin, setUserCin] = useState('');
+  const [step, setStep] = useState(1); // 1: code, 2: new password
   const inputRefs = useRef([]);
 
   useEffect(() => {
@@ -42,21 +43,21 @@ const ResetPasswordVerify = () => {
 
   const loadStoredData = async () => {
     try {
-      const savedCode = await AsyncStorage.getItem('resetPasswordCode');
       const savedEmail = await AsyncStorage.getItem('resetPasswordEmail');
-      
-      if (savedCode) {
-        setStoredCode(savedCode);
-      }
+      const savedCin = await AsyncStorage.getItem('resetPasswordCin');
       
       if (savedEmail) {
         setUserEmail(savedEmail);
       }
       
-      if (!savedCode || !savedEmail) {
+      if (savedCin) {
+        setUserCin(savedCin);
+      }
+      
+      if (!savedEmail || !savedCin) {
         Alert.alert(
-          'No Reset Request Found',
-          'Please request a password reset first.',
+          'Aucune demande trouvée',
+          'Veuillez d\'abord demander un code de réinitialisation.',
           [{ text: 'OK', onPress: () => router.replace('/reset-password') }]
         );
       }
@@ -88,53 +89,60 @@ const ResetPasswordVerify = () => {
     focusPrev(index, event.nativeEvent.key);
   };
 
-  const handleResetPassword = async () => {
+  const handleVerifyCode = async () => {
     const verificationCode = code.join('');
     
     if (verificationCode.length !== 6) {
-      Alert.alert('Error', 'Please enter the 6-digit code');
+      Alert.alert('Erreur', 'Veuillez entrer le code à 6 chiffres');
       return;
     }
 
-    if (verificationCode !== storedCode) {
-      Alert.alert('Invalid Code', 'The code you entered does not match. Please try again.');
-      return;
-    }
+    // Since backend just expects the code in the URL, we just check if code is complete
+    // The backend will validate the code via the URL parameter
+    setStep(2);
+  };
 
+  const handleUpdatePassword = async () => {
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please enter and confirm your new password');
+      Alert.alert('Erreur', 'Veuillez entrer et confirmer votre nouveau mot de passe');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
       return;
     }
 
     setLoading(true);
 
     try {
-      const data = await authService.updatePassword(userEmail, newPassword, verificationCode);
+      const verificationCode = code.join('');
+      
+      // First, update the password with the code
+      const result = await authService.updatePassword(
+        userEmail, 
+        userCin, 
+        newPassword, 
+        verificationCode
+      );
 
-      if (data.success) {
-        await AsyncStorage.multiRemove(['resetPasswordCode', 'resetPasswordEmail']);
-        
-        Alert.alert(
-          'Success', 
-          'Password reset successfully! You can now login with your new password.',
-          [{ text: 'OK', onPress: () => router.replace('/login') }]
-        );
-      } else {
-        Alert.alert('Error', data.message || 'Failed to reset password');
-      }
+      // Clear stored data
+      await AsyncStorage.multiRemove(['resetPasswordEmail', 'resetPasswordCin']);
+      
+      Alert.alert(
+        'Succès', 
+        result.message,
+        [{ text: 'OK', onPress: () => router.replace('/login') }]
+      );
+      
     } catch (error) {
-      console.error('Reset password error:', error);
-      Alert.alert('Error', 'Failed to reset password. Please try again.');
+      console.error('Update password error:', error);
+      Alert.alert('Erreur', error.message);
     } finally {
       setLoading(false);
     }
@@ -157,93 +165,122 @@ const ResetPasswordVerify = () => {
               <Ionicons name="arrow-back" size={24} color={theme.iconColorFocused} />
             </TouchableOpacity>
             <ThemedText title style={styles.headerTitle}>
-              Reset Password
+              {step === 1 ? 'Vérification' : 'Nouveau mot de passe'}
             </ThemedText>
             <View style={styles.headerRight} />
           </View>
 
           <View style={styles.content}>
             <ThemedCard style={styles.card}>
-              <Ionicons name="lock-closed" size={60} color={Colors.primary} />
+              <Ionicons 
+                name={step === 1 ? "mail" : "lock-closed"} 
+                size={60} 
+                color={Colors.primary} 
+              />
               
               <Spacer height={20} />
               
               <ThemedText title style={styles.title}>
-                Enter Verification Code
+                {step === 1 ? 'Code de vérification' : 'Nouveau mot de passe'}
               </ThemedText>
               
-              <ThemedText style={styles.description}>
-                Enter the 6-digit code sent to:
-              </ThemedText>
-              
-              <ThemedText style={styles.email}>
-                {userEmail || 'your email'}
-              </ThemedText>
-
-              <Spacer height={30} />
-
-              <View style={styles.codeContainer}>
-                {code.map((digit, index) => (
-                  <View 
-                    key={index} 
-                    style={[
-                      styles.codeInputWrapper,
-                      digit && styles.codeInputFilled
-                    ]}
-                  >
-                    <TextInput
-                      ref={ref => inputRefs.current[index] = ref}
-                      style={styles.codeInput}
-                      value={digit}
-                      onChangeText={(text) => handleChange(text, index)}
-                      onKeyPress={(e) => handleKeyPress(e, index)}
-                      keyboardType="numeric"
-                      maxLength={1}
-                      selectTextOnFocus
-                      editable={!loading}
-                    />
-                  </View>
-                ))}
-              </View>
-
-              <Spacer height={30} />
-
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="New Password"
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-                editable={!loading}
-              />
-
-              <ThemedTextInput
-                style={styles.input}
-                placeholder="Confirm New Password"
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                editable={!loading}
-              />
-
-              <Spacer height={30} />
-
-              <ThemedButton
-                onPress={handleResetPassword}
-                disabled={loading || code.join('').length !== 6}
-                style={[styles.verifyButton, (loading || code.join('').length !== 6) && styles.disabledButton]}
-              >
-                <View style={styles.buttonContent}>
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
-                  )}
-                  <ThemedText style={styles.buttonText}>
-                    {loading ? 'Resetting...' : 'Reset Password'}
+              {step === 1 ? (
+                <>
+                  <ThemedText style={styles.description}>
+                    Entrez le code à 6 chiffres envoyé à:
                   </ThemedText>
-                </View>
-              </ThemedButton>
+                  
+                  <ThemedText style={styles.email}>
+                    {userEmail}
+                  </ThemedText>
+
+                  <Spacer height={30} />
+
+                  <View style={styles.codeContainer}>
+                    {code.map((digit, index) => (
+                      <View 
+                        key={index} 
+                        style={[
+                          styles.codeInputWrapper,
+                          digit && styles.codeInputFilled
+                        ]}
+                      >
+                        <TextInput
+                          ref={ref => inputRefs.current[index] = ref}
+                          style={styles.codeInput}
+                          value={digit}
+                          onChangeText={(text) => handleChange(text, index)}
+                          onKeyPress={(e) => handleKeyPress(e, index)}
+                          keyboardType="numeric"
+                          maxLength={1}
+                          selectTextOnFocus
+                          editable={!loading}
+                        />
+                      </View>
+                    ))}
+                  </View>
+
+                  <Spacer height={30} />
+
+                  <ThemedButton
+                    onPress={handleVerifyCode}
+                    disabled={loading || code.join('').length !== 6}
+                    style={[styles.verifyButton, (loading || code.join('').length !== 6) && styles.disabledButton]}
+                  >
+                    <View style={styles.buttonContent}>
+                      <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                      <ThemedText style={styles.buttonText}>
+                        Vérifier
+                      </ThemedText>
+                    </View>
+                  </ThemedButton>
+                </>
+              ) : (
+                <>
+                  <ThemedText style={styles.description}>
+                    Choisissez un nouveau mot de passe sécurisé
+                  </ThemedText>
+
+                  <Spacer height={20} />
+
+                  <ThemedTextInput
+                    style={styles.input}
+                    placeholder="Nouveau mot de passe"
+                    secureTextEntry
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    editable={!loading}
+                  />
+
+                  <ThemedTextInput
+                    style={styles.input}
+                    placeholder="Confirmer le mot de passe"
+                    secureTextEntry
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    editable={!loading}
+                  />
+
+                  <Spacer height={20} />
+
+                  <ThemedButton
+                    onPress={handleUpdatePassword}
+                    disabled={loading || !newPassword || !confirmPassword}
+                    style={[styles.verifyButton, (loading || !newPassword || !confirmPassword) && styles.disabledButton]}
+                  >
+                    <View style={styles.buttonContent}>
+                      {loading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Ionicons name="save" size={22} color="#fff" />
+                      )}
+                      <ThemedText style={styles.buttonText}>
+                        {loading ? 'Mise à jour...' : 'Mettre à jour'}
+                      </ThemedText>
+                    </View>
+                  </ThemedButton>
+                </>
+              )}
             </ThemedCard>
           </View>
         </ScrollView>

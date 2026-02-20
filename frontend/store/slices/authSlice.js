@@ -35,18 +35,29 @@ export const loginUser = createAsyncThunk(
         
         return userData;
       } else {
-        return rejectWithValue('Invalid response from server');
+        return rejectWithValue('Réponse invalide du serveur');
       }
     } catch (error) {
-      let errorMessage = 'Login failed';
+      let errorMessage = 'Échec de la connexion';
       if (error.response) {
-        errorMessage = error.response.data?.error || 
-                      error.response.data?.message || 
-                      `Server error: ${error.response.status}`;
+        switch (error.response.status) {
+          case 401:
+            errorMessage = 'Email ou mot de passe incorrect';
+            break;
+          case 403:
+            errorMessage = 'Compte bloqué. Contactez l\'administrateur.';
+            break;
+          case 500:
+            errorMessage = 'Erreur serveur. Veuillez réessayer.';
+            break;
+          default:
+            errorMessage = error.response.data?.error || 
+                          `Erreur ${error.response.status}`;
+        }
       } else if (error.request) {
-        errorMessage = 'No response from server. Check if backend is running.';
+        errorMessage = 'Impossible de contacter le serveur. Vérifiez que le backend est en cours d\'exécution.';
       } else {
-        errorMessage = error.message || 'Network error';
+        errorMessage = error.message || 'Erreur réseau';
       }
       
       return rejectWithValue(errorMessage);
@@ -61,7 +72,7 @@ export const logoutUser = createAsyncThunk(
       await AsyncStorage.multiRemove(['token', 'user']);
       return true;
     } catch (error) {
-      return rejectWithValue(error.message || 'Failed to clear storage');
+      return rejectWithValue(error.message || 'Échec de la déconnexion');
     }
   }
 );
@@ -75,7 +86,7 @@ export const registerUser = createAsyncThunk(
       const responseData = response.data;
       
       if (!responseData) {
-        throw new Error('No response data received from server');
+        throw new Error('Aucune donnée reçue du serveur');
       }
       
       return {
@@ -83,19 +94,7 @@ export const registerUser = createAsyncThunk(
         code: responseData.code 
       };
     } catch (error) {
-      let errorMessage = 'Registration failed';
-      
-      if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      if (error.response) {
-        errorMessage = error.response.data?.message || 
-                      error.response.data?.error || 
-                      `Server error: ${error.response.status}`;
-      }
-      
-      return rejectWithValue(errorMessage);
+      return rejectWithValue(error.message || 'Échec de l\'inscription');
     }
   }
 );
@@ -106,10 +105,14 @@ export const verifyAccount = createAsyncThunk(
     try {
       const verifyResponse = await authService.verifyAccount(email);
       
+      if (!verifyResponse.success) {
+        throw new Error('Échec de la vérification');
+      }
+      
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       if (!password || password.trim() === '') {
-        throw new Error('Auto-login failed: No password available');
+        throw new Error('Auto-connexion impossible : mot de passe non disponible');
       }
       
       try {
@@ -138,32 +141,33 @@ export const verifyAccount = createAsyncThunk(
           
           return userData;
         } else {
-          throw new Error('Auto-login failed: No authentication token received');
+          throw new Error('Auto-connexion impossible : pas de token reçu');
         }
         
       } catch (loginError) {
         if (loginError.response && loginError.response.status === 401) {
-          throw new Error('Auto-login failed: Incorrect password. Please login manually.');
+          throw new Error('Compte activé mais auto-connexion impossible. Veuillez vous connecter manuellement.');
         }
         
         throw loginError;
       }
       
     } catch (error) {
-      let errorMessage = 'Verification failed';
+      let errorMessage = 'Échec de la vérification';
       
       if (error.response) {
-        if (error.response.status === 404) {
-          errorMessage = 'User not found. Please check your email.';
-        } else if (error.response.status === 400) {
-          errorMessage = error.response.data?.message || 'Invalid request.';
-        } else if (error.response.status === 401) {
-          errorMessage = 'Account activated but auto-login failed. Please login manually.';
-        } else {
-          errorMessage = `Server error: ${error.response.status}`;
+        switch (error.response.status) {
+          case 400:
+            errorMessage = 'Utilisateur non trouvé ou déjà activé.';
+            break;
+          case 404:
+            errorMessage = 'Utilisateur non trouvé.';
+            break;
+          default:
+            errorMessage = `Erreur ${error.response.status}`;
         }
       } else if (error.request) {
-        errorMessage = 'No response from server. Check if backend is running.';
+        errorMessage = 'Impossible de contacter le serveur.';
       } else if (error.message) {
         errorMessage = error.message;
       }

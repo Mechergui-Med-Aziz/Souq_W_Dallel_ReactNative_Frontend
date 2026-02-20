@@ -197,10 +197,6 @@ const EditProfile = () => {
     router.push('/reset-password');
   };
 
-  const refreshPhoto = () => {
-    loadUserPhoto();
-  };
-
   const displayInitial = () => {
     const name = formData.firstname || userData?.firstname || authUser?.email || 'U';
     return name.charAt(0).toUpperCase();
@@ -272,40 +268,7 @@ const EditProfile = () => {
               <ThemedText style={styles.photoLabel}>
                 Profile Photo
               </ThemedText>
-              
-              <View style={styles.photoActions}>
-                {userData?.photoId && !selectedImage && (
-                  <TouchableOpacity 
-                    style={styles.refreshPhotoButton}
-                    onPress={refreshPhoto}
-                    disabled={photoRefreshing}
-                  >
-                    <Ionicons 
-                      name={photoRefreshing ? "refresh" : "refresh-outline"} 
-                      size={16} 
-                      color={photoRefreshing ? "#999" : Colors.primary} 
-                    />
-                    <ThemedText style={[
-                      styles.refreshPhotoText,
-                      photoRefreshing && styles.refreshPhotoTextDisabled
-                    ]}>
-                      Refresh
-                    </ThemedText>
-                  </TouchableOpacity>
-                )}
-                
-                {selectedImage && (
-                  <TouchableOpacity 
-                    style={styles.removePhotoButton}
-                    onPress={removeImage}
-                  >
-                    <Ionicons name="trash" size={16} color={Colors.warning} />
-                    <ThemedText style={styles.removePhotoText}>
-                      Remove new photo
-                    </ThemedText>
-                  </TouchableOpacity>
-                )}
-              </View>
+
             </View>
 
             <View style={styles.section}>
@@ -508,19 +471,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 15,
     marginTop: 10,
-  },
-  refreshPhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 5,
-  },
-  refreshPhotoText: {
-    fontSize: 12,
-    color: Colors.primary,
-    marginLeft: 5,
-  },
-  refreshPhotoTextDisabled: {
-    color: '#999',
   },
   removePhotoButton: {
     flexDirection: 'row',

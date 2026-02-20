@@ -1,10 +1,10 @@
-export const API_BASE_URL = 'http://10.13.248.28:8080';
+export const API_BASE_URL = 'http://192.168.100.20:8080';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
   LOGIN: '/api/auth/login',
   REGISTER: '/api/auth/register',
-  VALIDATE_ACCOUNT: (email) => `/api/auth/validate/${email}`,
+  VERIFY_ACCOUNT: (email) => `/api/auth/confirmation/${email}`,
   RESEND_CODE: (email) => `/api/auth/confirmation/${email}/resend`,
   RESET_PASSWORD: '/api/reset-password',
   

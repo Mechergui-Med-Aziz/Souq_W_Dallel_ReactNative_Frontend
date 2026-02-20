@@ -6,7 +6,8 @@ import {
   TouchableOpacity, 
   Alert,
   FlatList,
-  RefreshControl
+  RefreshControl,
+  Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,20 @@ import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
 import { fetchUserAuctions, deleteAuction } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
 
+const categories = [
+  { id: 'all', label: 'All' },
+  { id: 'electronics', label: 'Electronics' },
+  { id: 'furniture', label: 'Furniture' },
+  { id: 'vehicles', label: 'Vehicles' },
+  { id: 'real-estate', label: 'Real Estate' },
+  { id: 'collectibles', label: 'Collectibles' },
+  { id: 'art', label: 'Art' },
+  { id: 'jewelry', label: 'Jewelry' },
+  { id: 'clothing', label: 'Clothing' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'general', label: 'General' },
+];
+
 const MyAuctions = () => {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -31,6 +46,9 @@ const MyAuctions = () => {
   
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [selectedAuction, setSelectedAuction] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (user?.id) {
@@ -53,14 +71,32 @@ const MyAuctions = () => {
   };
 
   const filteredAuctions = userAuctions.filter(auction => {
-    if (filter === 'all') return true;
-    if (filter === 'active') return auction.status?.toLowerCase() === 'active';
-    if (filter === 'ended') return auction.status?.toLowerCase() === 'ended';
-    if (filter === 'pending') return auction.status?.toLowerCase() === 'pending';
+    // Status filter
+    if (filter === 'active' && auction.status?.toLowerCase() !== 'active') return false;
+    if (filter === 'ended' && auction.status?.toLowerCase() !== 'ended') return false;
+    if (filter === 'pending' && auction.status?.toLowerCase() !== 'pending') return false;
+        
     return true;
   });
 
-  const handleDeleteAuction = (auctionId) => {
+  const openMenu = (auction, event) => {
+    const { pageX, pageY } = event.nativeEvent;
+    setMenuPosition({ x: pageX - 150, y: pageY + 10 });
+    setSelectedAuction(auction);
+    setMenuVisible(true);
+  };
+
+  const handleEdit = () => {
+    setMenuVisible(false);
+    if (selectedAuction) {
+      router.push(`/edit-auction/${selectedAuction.id}`);
+    }
+  };
+
+  const handleDelete = () => {
+    setMenuVisible(false);
+    if (!selectedAuction) return;
+    
     Alert.alert(
       'Delete Auction',
       'Are you sure you want to delete this auction? This action cannot be undone.',
@@ -71,20 +107,15 @@ const MyAuctions = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              await dispatch(deleteAuction(auctionId)).unwrap();
+              await dispatch(deleteAuction(selectedAuction.id)).unwrap();
               Alert.alert('Success', 'Auction deleted successfully!');
             } catch (error) {
-              console.error('Error deleting auction:', error);
               Alert.alert('Error', 'Failed to delete auction. Please try again.');
             }
           }
         }
       ]
     );
-  };
-
-  const handleEditAuction = (auctionId) => {
-    router.push(`/edit-auction/${auctionId}`);
   };
 
   const getStats = () => {
@@ -97,6 +128,21 @@ const MyAuctions = () => {
   };
 
   const stats = getStats();
+
+  const renderAuctionItem = ({ item }) => (
+    <View style={styles.auctionItem}>
+      <TouchableOpacity 
+        style={styles.menuButton}
+        onPress={(event) => openMenu(item, event)}
+      >
+        <Ionicons name="ellipsis-vertical" size={20} color={theme.iconColor} />
+      </TouchableOpacity>
+      <AuctionCard 
+        auction={item}
+        onPress={() => router.push(`/auction-details/${item.id}`)}
+      />
+    </View>
+  );
 
   return (
     <ThemedView safe style={styles.container}>
@@ -186,36 +232,7 @@ const MyAuctions = () => {
       <FlatList
         data={filteredAuctions}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.auctionItem}>
-            <AuctionCard 
-              auction={item}
-              onPress={() => router.push(`/auction-details/${item.id}`)}
-            />
-            
-            {/* Action Buttons */}
-            <View style={styles.auctionActions}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => handleEditAuction(item.id)}
-              >
-                <Ionicons name="create" size={20} color={Colors.primary} />
-                <ThemedText style={styles.actionText}>Edit</ThemedText>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => handleDeleteAuction(item.id)}
-                disabled={deleting}
-              >
-                <Ionicons name="trash" size={20} color={Colors.warning} />
-                <ThemedText style={[styles.actionText, styles.deleteText]}>
-                  Delete
-                </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        renderItem={renderAuctionItem}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -242,6 +259,36 @@ const MyAuctions = () => {
         }
         showsVerticalScrollIndicator={false}
       />
+
+      {/* Three Dots Menu Modal */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <View style={[styles.menuContainer, { top: menuPosition.y, left: menuPosition.x }]}>
+            <TouchableOpacity style={styles.menuItem} onPress={handleEdit}>
+              <Ionicons name="create-outline" size={20} color={Colors.primary} />
+              <ThemedText style={styles.menuItemText}>Edit Auction</ThemedText>
+            </TouchableOpacity>
+            
+            <View style={styles.menuDivider} />
+            
+            <TouchableOpacity style={[styles.menuItem, styles.deleteMenuItem]} onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={20} color={Colors.warning} />
+              <ThemedText style={[styles.menuItemText, styles.deleteMenuItemText]}>
+                Delete Auction
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ThemedView>
   );
 };
@@ -330,36 +377,28 @@ const styles = StyleSheet.create({
   },
   auctionsList: {
     padding: 20,
-    paddingTop: 10,
+    paddingTop: 0,
   },
   auctionItem: {
     marginBottom: 20,
+    position: 'relative',
   },
-  auctionActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-    gap: 15,
-  },
-  actionButton: {
-    flexDirection: 'row',
+  menuButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-  },
-  actionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 5,
-    color: Colors.primary,
-  },
-  deleteButton: {
-    backgroundColor: '#fff5f5',
-  },
-  deleteText: {
-    color: Colors.warning,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -390,5 +429,44 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  menuContainer: {
+    position: 'absolute',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    minWidth: 160,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  deleteMenuItem: {
+    // No specific style needed
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#333',
+  },
+  deleteMenuItemText: {
+    color: Colors.warning,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 4,
   },
 });

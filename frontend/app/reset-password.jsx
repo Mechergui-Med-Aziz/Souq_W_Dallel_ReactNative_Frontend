@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ThemedView from '../components/ThemedView';
 import ThemedText from '../components/ThemedText';
 import ThemedButton from '../components/ThemedButton';
@@ -18,7 +19,7 @@ import ThemedCard from '../components/ThemedCard';
 import Spacer from '../components/Spacer';
 import { Colors } from '../constants/Colors';
 import { TouchableOpacity, ActivityIndicator } from 'react-native';
-import axiosInstance from '../lib/axios';
+import { authService } from '../store/services/authService';
 
 const ResetPassword = () => {
   const router = useRouter();
@@ -38,7 +39,12 @@ const ResetPassword = () => {
 
   const handleSubmit = async () => {
     if (!formData.cin || !formData.email) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (formData.cin.length !== 8) {
+      Alert.alert('Erreur', 'Le CIN doit contenir 8 chiffres');
       return;
     }
 
@@ -46,45 +52,22 @@ const ResetPassword = () => {
     setNetworkError('');
 
     try {
-      console.log('Attempting password reset...');
-      const response = await axiosInstance.post('/api/reset-password', {
-        cin: parseInt(formData.cin),
-        email: formData.email,
-      });
-
-      console.log('Response received:', response.data);
-
-      if (response.data.success) {
-        Alert.alert('Success', response.data.message, [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              router.replace('/login');
-            }
-          }
-        ]);
-      } else {
-        Alert.alert('Error', response.data.message || 'Failed to reset password');
-      }
+      const result = await authService.resetPassword(formData.cin, formData.email);
+      
+      // Store email and cin for next step
+      await AsyncStorage.setItem('resetPasswordEmail', formData.email);
+      await AsyncStorage.setItem('resetPasswordCin', formData.cin);
+      
+      Alert.alert(
+        'Code Envoyé', 
+        result.message,
+        [{ 
+          text: 'Entrer le code', 
+          onPress: () => router.push('/reset-password-verify')
+        }]
+      );
     } catch (error) {
-      console.error('Reset password error details:', error);
-      
-      let errorMessage = 'Failed to reset password. ';
-      
-      if (error.response) {
-        errorMessage += `Server error: ${error.response.status}`;
-        if (error.response.data?.message) {
-          errorMessage += ` - ${error.response.data.message}`;
-        }
-      } else if (error.request) {
-        errorMessage += 'No response from server. ';
-        errorMessage += 'Please check: \n1. Backend is running\n2. Correct IP address\n3. Network connection';
-        setNetworkError('Cannot connect to server. Check backend is running.');
-      } else {
-        errorMessage += error.message || 'Network error';
-      }
-      
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Erreur', error.message);
     } finally {
       setLoading(false);
     }
@@ -107,7 +90,7 @@ const ResetPassword = () => {
               <Ionicons name="arrow-back" size={24} color={theme.iconColorFocused} />
             </TouchableOpacity>
             <ThemedText title style={styles.headerTitle}>
-              Reset Password
+              Réinitialiser le mot de passe
             </ThemedText>
             <View style={styles.headerRight} />
           </View>
@@ -119,26 +102,20 @@ const ResetPassword = () => {
               <Spacer height={10} />
               
               <ThemedText title style={styles.title}>
-                Reset Your Password
+                Mot de passe oublié ?
               </ThemedText>
               
               <ThemedText style={styles.description}>
-                Enter your CIN and email to receive a new password
+                Entrez votre CIN et votre email pour recevoir un code de vérification
               </ThemedText>
-
-              {networkError ? (
-                <View style={styles.errorBox}>
-                  <Ionicons name="warning" size={20} color={Colors.warning} />
-                  <ThemedText style={styles.errorText}>{networkError}</ThemedText>
-                </View>
-              ) : null}
 
               <Spacer height={20} />
 
               <ThemedTextInput
                 style={styles.input}
-                placeholder="CIN (8 digits)"
+                placeholder="CIN (8 chiffres)"
                 keyboardType="numeric"
+                maxLength={8}
                 onChangeText={(value) => handleChange('cin', value)}
                 value={formData.cin}
                 editable={!loading}
@@ -166,28 +143,11 @@ const ResetPassword = () => {
                     <Ionicons name="send" size={22} color="#fff" />
                   )}
                   <ThemedText style={styles.buttonText}>
-                    {loading ? 'Sending...' : 'Reset Password'}
+                    {loading ? 'Envoi...' : 'Envoyer le code'}
                   </ThemedText>
                 </View>
               </ThemedButton>
             </ThemedCard>
-
-            <Spacer height={30} />
-
-            <View style={styles.helpContainer}>
-              <Ionicons name="information-circle" size={20} color={theme.iconColor} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <ThemedText style={styles.helpText}>
-                  • A new password will be sent to your email
-                </ThemedText>
-                <ThemedText style={styles.helpText}>
-                  • Make sure your CIN and email match your registration
-                </ThemedText>
-                <ThemedText style={styles.helpText}>
-                  • Check spam folder if you don't receive the email
-                </ThemedText>
-              </View>
-            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -248,23 +208,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 20,
   },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff5f5',
-    borderWidth: 1,
-    borderColor: Colors.warning,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 20,
-    width: '100%',
-  },
-  errorText: {
-    color: Colors.warning,
-    fontSize: 14,
-    marginLeft: 10,
-    flex: 1,
-  },
   submitButton: {
     width: '100%',
     borderRadius: 12,
@@ -284,29 +227,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 10,
-  },
-  loginLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  loginText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  helpContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 15,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    width: '100%',
-  },
-  helpText: {
-    fontSize: 14,
-    opacity: 0.7,
-    marginBottom: 5,
   },
 });
 

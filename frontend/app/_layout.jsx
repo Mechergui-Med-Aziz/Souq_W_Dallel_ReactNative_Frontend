@@ -1,5 +1,3 @@
-// Replace the entire file with:
-
 import { useColorScheme } from 'react-native';
 import { Tabs, Stack } from "expo-router";
 import { Colors } from "../constants/Colors";
