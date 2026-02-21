@@ -299,8 +299,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   photoContainer: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
     borderRadius: 25,
     overflow: 'hidden',
     backgroundColor: '#f0f0f0',
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   },
   auctionsList: {
     padding: 20,
-    paddingTop: 0,
+    paddingTop: 3,
   },
   emptyContainer: {
     alignItems: 'center',

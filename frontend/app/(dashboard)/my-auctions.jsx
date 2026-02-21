@@ -6,8 +6,7 @@ import {
   TouchableOpacity, 
   Alert,
   FlatList,
-  RefreshControl,
-  Modal
+  RefreshControl
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,22 +18,8 @@ import AuctionCard from '../../components/AuctionCard';
 import Spacer from '../../components/Spacer';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
-import { fetchUserAuctions, deleteAuction } from '../../store/slices/auctionSlice';
+import { fetchUserAuctions } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
-
-const categories = [
-  { id: 'all', label: 'All' },
-  { id: 'electronics', label: 'Electronics' },
-  { id: 'furniture', label: 'Furniture' },
-  { id: 'vehicles', label: 'Vehicles' },
-  { id: 'real-estate', label: 'Real Estate' },
-  { id: 'collectibles', label: 'Collectibles' },
-  { id: 'art', label: 'Art' },
-  { id: 'jewelry', label: 'Jewelry' },
-  { id: 'clothing', label: 'Clothing' },
-  { id: 'sports', label: 'Sports' },
-  { id: 'general', label: 'General' },
-];
 
 const MyAuctions = () => {
   const router = useRouter();
@@ -42,13 +27,10 @@ const MyAuctions = () => {
   const theme = Colors[colorScheme] ?? Colors.light;
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const { userAuctions, loading, deleting } = useAppSelector((state) => state.auction);
+  const { userAuctions, loading } = useAppSelector((state) => state.auction);
   
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all');
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [selectedAuction, setSelectedAuction] = useState(null);
-  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (user?.id) {
@@ -71,52 +53,12 @@ const MyAuctions = () => {
   };
 
   const filteredAuctions = userAuctions.filter(auction => {
-    // Status filter
-    if (filter === 'active' && auction.status?.toLowerCase() !== 'active') return false;
-    if (filter === 'ended' && auction.status?.toLowerCase() !== 'ended') return false;
-    if (filter === 'pending' && auction.status?.toLowerCase() !== 'pending') return false;
-        
-    return true;
+    if (filter === 'all') return true;
+    if (filter === 'active' && auction.status?.toLowerCase() === 'active') return true;
+    if (filter === 'ended' && auction.status?.toLowerCase() === 'ended') return true;
+    if (filter === 'pending' && auction.status?.toLowerCase() === 'pending') return true;
+    return false;
   });
-
-  const openMenu = (auction, event) => {
-    const { pageX, pageY } = event.nativeEvent;
-    setMenuPosition({ x: pageX - 150, y: pageY + 10 });
-    setSelectedAuction(auction);
-    setMenuVisible(true);
-  };
-
-  const handleEdit = () => {
-    setMenuVisible(false);
-    if (selectedAuction) {
-      router.push(`/edit-auction/${selectedAuction.id}`);
-    }
-  };
-
-  const handleDelete = () => {
-    setMenuVisible(false);
-    if (!selectedAuction) return;
-    
-    Alert.alert(
-      'Delete Auction',
-      'Are you sure you want to delete this auction? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dispatch(deleteAuction(selectedAuction.id)).unwrap();
-              Alert.alert('Success', 'Auction deleted successfully!');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete auction. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
 
   const getStats = () => {
     const total = userAuctions.length;
@@ -129,20 +71,9 @@ const MyAuctions = () => {
 
   const stats = getStats();
 
-  const renderAuctionItem = ({ item }) => (
-    <View style={styles.auctionItem}>
-      <TouchableOpacity 
-        style={styles.menuButton}
-        onPress={(event) => openMenu(item, event)}
-      >
-        <Ionicons name="ellipsis-vertical" size={20} color={theme.iconColor} />
-      </TouchableOpacity>
-      <AuctionCard 
-        auction={item}
-        onPress={() => router.push(`/auction-details/${item.id}`)}
-      />
-    </View>
-  );
+  const handleAuctionPress = (auctionId) => {
+    router.push(`/edit-auction/${auctionId}`);
+  };
 
   return (
     <ThemedView safe style={styles.container}>
@@ -153,7 +84,7 @@ const MyAuctions = () => {
             <Ionicons name="arrow-back" size={24} color={theme.iconColorFocused} />
           </TouchableOpacity>
           <ThemedText title style={styles.headerTitle}>
-            My Auctions
+            Mes Enchères
           </ThemedText>
           <TouchableOpacity 
             style={styles.createButton}
@@ -181,7 +112,7 @@ const MyAuctions = () => {
               <ThemedText title style={[styles.statNumber, { color: '#4ade80' }]}>
                 {stats.active}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Active</ThemedText>
+              <ThemedText style={styles.statLabel}>Actives</ThemedText>
             </View>
             
             <View style={styles.statDivider} />
@@ -190,7 +121,7 @@ const MyAuctions = () => {
               <ThemedText title style={[styles.statNumber, { color: '#fbbf24' }]}>
                 {stats.pending}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Pending</ThemedText>
+              <ThemedText style={styles.statLabel}>En attente</ThemedText>
             </View>
             
             <View style={styles.statDivider} />
@@ -199,7 +130,7 @@ const MyAuctions = () => {
               <ThemedText title style={[styles.statNumber, { color: '#ef4444' }]}>
                 {stats.ended}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Ended</ThemedText>
+              <ThemedText style={styles.statLabel}>Terminées</ThemedText>
             </View>
           </View>
         </ThemedCard>
@@ -221,7 +152,9 @@ const MyAuctions = () => {
                 styles.filterText,
                 filter === filterType && styles.filterTextActive
               ]}>
-                {filterType.charAt(0).toUpperCase() + filterType.slice(1)}
+                {filterType === 'all' ? 'Toutes' : 
+                 filterType === 'active' ? 'Actives' :
+                 filterType === 'pending' ? 'En attente' : 'Terminées'}
               </ThemedText>
             </TouchableOpacity>
           ))}
@@ -232,7 +165,14 @@ const MyAuctions = () => {
       <FlatList
         data={filteredAuctions}
         keyExtractor={(item) => item.id}
-        renderItem={renderAuctionItem}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => handleAuctionPress(item.id)}>
+            <AuctionCard 
+              auction={item}
+              onPress={() => handleAuctionPress(item.id)}
+            />
+          </TouchableOpacity>
+        )}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -241,10 +181,10 @@ const MyAuctions = () => {
           <View style={styles.emptyContainer}>
             <Ionicons name="hammer" size={60} color="#ccc" />
             <ThemedText style={styles.emptyText}>
-              No auctions found
+              Aucune enchère trouvée
             </ThemedText>
             <ThemedText style={styles.emptySubtext}>
-              {loading ? 'Loading your auctions...' : 'Create your first auction!'}
+              {loading ? 'Chargement...' : 'Créez votre première enchère !'}
             </ThemedText>
             <TouchableOpacity 
               style={styles.createFirstButton}
@@ -252,43 +192,13 @@ const MyAuctions = () => {
             >
               <Ionicons name="add-circle" size={20} color="#fff" />
               <ThemedText style={styles.createFirstButtonText}>
-                Create Auction
+                Créer une enchère
               </ThemedText>
             </TouchableOpacity>
           </View>
         }
         showsVerticalScrollIndicator={false}
       />
-
-      {/* Three Dots Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
-        >
-          <View style={[styles.menuContainer, { top: menuPosition.y, left: menuPosition.x }]}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleEdit}>
-              <Ionicons name="create-outline" size={20} color={Colors.primary} />
-              <ThemedText style={styles.menuItemText}>Edit Auction</ThemedText>
-            </TouchableOpacity>
-            
-            <View style={styles.menuDivider} />
-            
-            <TouchableOpacity style={[styles.menuItem, styles.deleteMenuItem]} onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={20} color={Colors.warning} />
-              <ThemedText style={[styles.menuItemText, styles.deleteMenuItemText]}>
-                Delete Auction
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </ThemedView>
   );
 };
@@ -379,27 +289,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 0,
   },
-  auctionItem: {
-    marginBottom: 20,
-    position: 'relative',
-  },
-  menuButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 10,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -429,44 +318,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     marginLeft: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  menuContainer: {
-    position: 'absolute',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-    minWidth: 160,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  deleteMenuItem: {
-    // No specific style needed
-  },
-  menuItemText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333',
-  },
-  deleteMenuItemText: {
-    color: Colors.warning,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginVertical: 4,
   },
 });
