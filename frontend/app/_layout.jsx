@@ -9,6 +9,8 @@ import { useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadToken } from '../store/slices/authSlice';
 import { useDispatch } from 'react-redux';
+import { StyleSheet, View, Text } from "react-native";
+import { fetchNotifications } from '../store/slices/notificationSlice';
 
 export default function RootLayout() {
   return (
@@ -32,6 +34,10 @@ function InitializeAuth() {
         if (token && userStr) {
           const user = JSON.parse(userStr);
           dispatch(loadToken({ token, user }));
+          // Fetch notifications immediately after login
+          if (user.id) {
+            dispatch(fetchNotifications(user.id));
+          }
         }
       } catch (error) {
         console.error('❌ Error loading auth state:', error);
@@ -48,7 +54,16 @@ function InitializeAuth() {
 function AppContent() {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme] ?? Colors.light;
-  const { token } = useSelector((state) => state.auth);
+  const { token, user } = useSelector((state) => state.auth);
+  const { unreadCount } = useSelector((state) => state.notifications || { unreadCount: 0 });
+  const dispatch = useDispatch();
+
+  // Fetch notifications when user is authenticated
+  useEffect(() => {
+    if (token && user?.id) {
+      dispatch(fetchNotifications(user.id));
+    }
+  }, [token, user?.id]);
   
   // Not authenticated - show auth screens
   if (!token) {
@@ -82,7 +97,7 @@ function AppContent() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Accueil',
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'home' : 'home-outline'}
@@ -96,7 +111,7 @@ function AppContent() {
       <Tabs.Screen 
         name="create-auction" 
         options={{ 
-          title: 'Create Auction',
+          title: 'Créer',
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'add-circle' : 'add-circle-outline'}
@@ -110,7 +125,7 @@ function AppContent() {
       <Tabs.Screen 
         name="(dashboard)/my-auctions" 
         options={{ 
-          title: 'My Auctions',
+          title: 'Mes enchères',
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'list' : 'list-outline'}
@@ -120,11 +135,34 @@ function AppContent() {
           )
         }} 
       />
+
+      <Tabs.Screen
+        name="(dashboard)/notifications"
+        options={{
+          title: 'Notifications',
+          tabBarIcon: ({ focused, color, size }) => (
+            <View>
+              <Ionicons
+                name={focused ? 'notifications' : 'notifications-outline'}
+                size={24}
+                color={color}
+              />
+              {unreadCount > 0 && (
+                <View style={[styles.notificationBadge, { backgroundColor: Colors.warning }]}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
+        }}
+      />
       
       <Tabs.Screen
         name="(dashboard)/profile"
         options={{
-          title: 'Profile',
+          title: 'Profil',
           tabBarIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'person' : 'person-outline'}
@@ -140,9 +178,28 @@ function AppContent() {
       <Tabs.Screen name="edit-auction/[id]" options={{ href: null }}/>
       <Tabs.Screen name="auction-details/[id]" options={{ href: null }}/>
       <Tabs.Screen name="(auth)" options={{ href: null }} />
-      <Stack.Screen name="verify-account" options={{ href: null }}  />
-      <Stack.Screen name="reset-password" options={{ href: null }}  />
-      <Stack.Screen name="reset-password-verify" options={{ href: null }}  />
+      <Tabs.Screen name="verify-account" options={{ href: null }}  />
+      <Tabs.Screen name="reset-password" options={{ href: null }}  />
+      <Tabs.Screen name="reset-password-verify" options={{ href: null }}  />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -10,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+});

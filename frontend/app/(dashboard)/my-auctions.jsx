@@ -31,12 +31,44 @@ const MyAuctions = () => {
   
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [participatedAuctions, setParticipatedAuctions] = useState([]);
+  const [wonAuctions, setWonAuctions] = useState([]);
+  const [lostAuctions, setLostAuctions] = useState([]);
 
   useEffect(() => {
     if (user?.id) {
       loadUserAuctions();
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    // Calculate participated auctions (where user has bid)
+    const participated = userAuctions.filter(auction => 
+      auction.bidders && Object.keys(auction.bidders).includes(user?.id)
+    );
+    setParticipatedAuctions(participated);
+
+    // Calculate won auctions (where user is highest bidder and auction ended)
+    const won = participated.filter(auction => {
+      if (!auction.bidders || auction.status !== 'ended') return false;
+      const bids = Object.entries(auction.bidders);
+      if (bids.length === 0) return false;
+      const highestBidder = bids.sort((a, b) => b[1] - a[1])[0][0];
+      return highestBidder === user?.id;
+    });
+    setWonAuctions(won);
+
+    // Calculate lost auctions (where user participated but didn't win)
+    const lost = participated.filter(auction => {
+      if (!auction.bidders || auction.status !== 'ended') return false;
+      const bids = Object.entries(auction.bidders);
+      if (bids.length === 0) return false;
+      const highestBidder = bids.sort((a, b) => b[1] - a[1])[0][0];
+      return highestBidder !== user?.id;
+    });
+    setLostAuctions(lost);
+
+  }, [userAuctions, user?.id]);
 
   const loadUserAuctions = async () => {
     try {
@@ -52,24 +84,36 @@ const MyAuctions = () => {
     setRefreshing(false);
   };
 
-  const filteredAuctions = userAuctions.filter(auction => {
-    if (filter === 'all') return true;
-    if (filter === 'active' && auction.status?.toLowerCase() === 'active') return true;
-    if (filter === 'ended' && auction.status?.toLowerCase() === 'ended') return true;
-    if (filter === 'pending' && auction.status?.toLowerCase() === 'pending') return true;
-    return false;
-  });
+  const getFilteredAuctions = () => {
+    switch (filter) {
+      case 'created':
+        return userAuctions.filter(auction => auction.sellerId === user?.id);
+      case 'participated':
+        return participatedAuctions;
+      case 'won':
+        return wonAuctions;
+      case 'lost':
+        return lostAuctions;
+      case 'active':
+        return userAuctions.filter(a => a.status?.toLowerCase() === 'active');
+      case 'ended':
+        return userAuctions.filter(a => a.status?.toLowerCase() === 'ended');
+      default:
+        return userAuctions;
+    }
+  };
 
   const getStats = () => {
-    const total = userAuctions.length;
-    const active = userAuctions.filter(a => a.status?.toLowerCase() === 'active').length;
-    const ended = userAuctions.filter(a => a.status?.toLowerCase() === 'ended').length;
-    const pending = userAuctions.filter(a => a.status?.toLowerCase() === 'pending').length;
+    const created = userAuctions.filter(a => a.sellerId === user?.id).length;
+    const participated = participatedAuctions.length;
+    const won = wonAuctions.length;
+    const lost = lostAuctions.length;
     
-    return { total, active, ended, pending };
+    return { created, participated, won, lost };
   };
 
   const stats = getStats();
+  const filteredAuctions = getFilteredAuctions();
 
   const handleAuctionPress = (auctionId) => {
     router.push(`/edit-auction/${auctionId}`);
@@ -101,36 +145,36 @@ const MyAuctions = () => {
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <ThemedText title style={styles.statNumber}>
-                {stats.total}
+                {stats.created}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Total</ThemedText>
+              <ThemedText style={styles.statLabel}>Créées</ThemedText>
             </View>
             
             <View style={styles.statDivider} />
             
             <View style={styles.statItem}>
-              <ThemedText title style={[styles.statNumber, { color: '#4ade80' }]}>
-                {stats.active}
+              <ThemedText title style={[styles.statNumber, { color: '#3b82f6' }]}>
+                {stats.participated}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Actives</ThemedText>
+              <ThemedText style={styles.statLabel}>Participées</ThemedText>
             </View>
             
             <View style={styles.statDivider} />
             
             <View style={styles.statItem}>
               <ThemedText title style={[styles.statNumber, { color: '#fbbf24' }]}>
-                {stats.pending}
+                {stats.won}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>En attente</ThemedText>
+              <ThemedText style={styles.statLabel}>Gagnées</ThemedText>
             </View>
             
             <View style={styles.statDivider} />
             
             <View style={styles.statItem}>
               <ThemedText title style={[styles.statNumber, { color: '#ef4444' }]}>
-                {stats.ended}
+                {stats.lost}
               </ThemedText>
-              <ThemedText style={styles.statLabel}>Terminées</ThemedText>
+              <ThemedText style={styles.statLabel}>Perdues</ThemedText>
             </View>
           </View>
         </ThemedCard>
@@ -139,22 +183,28 @@ const MyAuctions = () => {
       {/* Filters */}
       <View style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {['all', 'active', 'pending', 'ended'].map((filterType) => (
+          {[
+            { id: 'all', label: 'Toutes' },
+            { id: 'created', label: 'Mes créations' },
+            { id: 'participated', label: 'Participées' },
+            { id: 'won', label: 'Gagnées' },
+            { id: 'lost', label: 'Perdues' },
+            { id: 'active', label: 'Actives' },
+            { id: 'ended', label: 'Terminées' }
+          ].map((filterType) => (
             <TouchableOpacity
-              key={filterType}
+              key={filterType.id}
               style={[
                 styles.filterButton,
-                filter === filterType && styles.filterButtonActive
+                filter === filterType.id && styles.filterButtonActive
               ]}
-              onPress={() => setFilter(filterType)}
+              onPress={() => setFilter(filterType.id)}
             >
               <ThemedText style={[
                 styles.filterText,
-                filter === filterType && styles.filterTextActive
+                filter === filterType.id && styles.filterTextActive
               ]}>
-                {filterType === 'all' ? 'Toutes' : 
-                 filterType === 'active' ? 'Actives' :
-                 filterType === 'pending' ? 'En attente' : 'Terminées'}
+                {filterType.label}
               </ThemedText>
             </TouchableOpacity>
           ))}
@@ -184,17 +234,8 @@ const MyAuctions = () => {
               Aucune enchère trouvée
             </ThemedText>
             <ThemedText style={styles.emptySubtext}>
-              {loading ? 'Chargement...' : 'Créez votre première enchère !'}
+              {loading ? 'Chargement...' : 'Aucune enchère ne correspond à ce filtre'}
             </ThemedText>
-            <TouchableOpacity 
-              style={styles.createFirstButton}
-              onPress={() => router.push('/create-auction')}
-            >
-              <Ionicons name="add-circle" size={20} color="#fff" />
-              <ThemedText style={styles.createFirstButtonText}>
-                Créer une enchère
-              </ThemedText>
-            </TouchableOpacity>
           </View>
         }
         showsVerticalScrollIndicator={false}
@@ -250,12 +291,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 5,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 10,
     opacity: 0.7,
   },
   statDivider: {
@@ -268,17 +309,17 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   filterButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#f0f0f0',
-    marginRight: 10,
+    marginRight: 8,
   },
   filterButtonActive: {
     backgroundColor: Colors.primary,
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
   },
   filterTextActive: {
@@ -305,18 +346,5 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     textAlign: 'center',
     marginBottom: 20,
-  },
-  createFirstButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  createFirstButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    marginLeft: 8,
   },
 });

@@ -13,32 +13,22 @@ const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
   async (config) => {
     try {
-      const tokenData = await AsyncStorage.getItem('token');
+      // Get token for ALL requests
+      const token = await AsyncStorage.getItem('token');
       
-      if (tokenData) {
-        let token = tokenData;
-        
-        if (token && !token.startsWith('eyJ')) {
-          try {
-            const parsed = JSON.parse(tokenData);
-            token = parsed.token || tokenData;
-          } catch (e) {}
-        }
-        
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
+      // Always add token if it exists (backend will validate)
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
       }
       
+      // Handle FormData
       if (config.data instanceof FormData) {
         delete config.headers['Content-Type'];
-        
-        if (config.url?.includes('/api/auth/register')) {
-          delete config.headers['Authorization'];
-        }
       }
       
-    } catch (error) {}
+    } catch (error) {
+      console.error('Interceptor error:', error);
+    }
     
     return config;
   },
@@ -47,11 +37,17 @@ axiosInstance.interceptors.request.use(
   }
 );
 
+// Response interceptor to handle 401 errors
 axiosInstance.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      await AsyncStorage.multiRemove(['token', 'user']);
+      // then redirect to login
+    }
     return Promise.reject(error);
   }
 );

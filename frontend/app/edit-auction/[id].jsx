@@ -16,7 +16,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useColorScheme } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
@@ -109,7 +108,6 @@ const EditAuction = () => {
         setExpirationDate(date);
         setTempDate(date);
         
-        // Update time picker values
         const hours24 = date.getHours();
         setSelectedHour(hours24 % 12 || 12);
         setSelectedMinute(date.getMinutes());
@@ -124,7 +122,6 @@ const EditAuction = () => {
     }
   }, [currentAuction]);
 
-  // Generate calendar days
   const getDaysInMonth = (month, year) => {
     return new Date(year, month + 1, 0).getDate();
   };
@@ -384,7 +381,6 @@ const EditAuction = () => {
         >
           <Spacer height={10} />
           
-          {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="arrow-back" size={24} color={theme.iconColorFocused} />
@@ -422,7 +418,6 @@ const EditAuction = () => {
                     scrollEventThrottle={16}
                   >
                     <View style={styles.imageGrid}>
-                      {/* Gallery Button */}
                       {allImagesCount < 10 && (
                         <TouchableOpacity 
                           style={styles.galleryButton}
@@ -435,7 +430,6 @@ const EditAuction = () => {
                         </TouchableOpacity>
                       )}
                       
-                      {/* Existing Images */}
                       {existingImages.map((img, idx) => (
                         <View key={`existing-${idx}`} style={styles.imageContainer}>
                           <Image 
@@ -454,7 +448,6 @@ const EditAuction = () => {
                         </View>
                       ))}
                       
-                      {/* New Images */}
                       {newImages.map((img, idx) => (
                         <View key={`new-${idx}`} style={styles.imageContainer}>
                           <Image 
@@ -472,7 +465,6 @@ const EditAuction = () => {
                     </View>
                   </ScrollView>
                   
-                  {/* Scroll Indicator */}
                   {showScrollIndicator && allImagesCount > 3 && (
                     <View style={styles.scrollIndicator}>
                       <Ionicons name="arrow-forward-circle" size={24} color={Colors.primary} />
@@ -481,7 +473,6 @@ const EditAuction = () => {
                 </View>
               </View>
 
-              {/* Basic Info */}
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Ionicons name="information-circle" size={22} color={Colors.primary} />
@@ -538,7 +529,6 @@ const EditAuction = () => {
                     <ThemedText style={styles.errorText}>{errors.startingPrice}</ThemedText>
                   )}
 
-                  {/* Category Picker */}
                   <TouchableOpacity
                     style={[styles.pickerButton, errors.category && styles.inputError]}
                     onPress={() => setShowCategoryModal(true)}
@@ -559,7 +549,6 @@ const EditAuction = () => {
                     <ThemedText style={styles.errorText}>{errors.category}</ThemedText>
                   )}
 
-                  {/* Expiration Date */}
                   <View style={styles.expirationSection}>
                     <View style={styles.expirationHeader}>
                       <Ionicons name="time" size={20} color={Colors.primary} />
@@ -596,7 +585,6 @@ const EditAuction = () => {
 
             <Spacer height={30} />
 
-            {/* Update Button */}
             <TouchableOpacity
               style={[styles.updateButton, (isSubmitting || updating) && styles.disabledButton]}
               onPress={handleSubmit}
@@ -631,7 +619,6 @@ const EditAuction = () => {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Category Selection Modal */}
       <Modal
         visible={showCategoryModal}
         transparent
@@ -690,7 +677,6 @@ const EditAuction = () => {
         </View>
       </Modal>
 
-      {/* Date Picker Modal */}
       <Modal
         visible={showDatePickerModal}
         transparent
@@ -703,15 +689,22 @@ const EditAuction = () => {
               <ThemedText style={styles.modalTitle}>
                 Choisir la date de fin
               </ThemedText>
-              <TouchableOpacity 
-                onPress={handleDateConfirm}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="checkmark-circle" size={28} color={Colors.primary} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderButtons}>
+                <TouchableOpacity 
+                  onPress={() => setShowDatePickerModal(false)}
+                  style={styles.modalHeaderButton}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handleDateConfirm}
+                  style={styles.modalHeaderButton}
+                >
+                  <Ionicons name="checkmark" size={24} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* Selected Date Display */}
             <View style={styles.selectedDateDisplay}>
               <ThemedText style={styles.selectedDateText}>
                 {tempDate.toLocaleDateString('fr-FR', {
@@ -735,7 +728,6 @@ const EditAuction = () => {
               </View>
             </View>
 
-            {/* Month Navigation */}
             <View style={styles.monthNavigation}>
               <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavButton}>
                 <Ionicons name="chevron-back" size={24} color={Colors.primary} />
@@ -748,7 +740,6 @@ const EditAuction = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Days of Week */}
             <View style={styles.daysOfWeekContainer}>
               {daysOfWeek.map(day => (
                 <ThemedText key={day} style={styles.dayOfWeekText}>
@@ -757,7 +748,6 @@ const EditAuction = () => {
               ))}
             </View>
 
-            {/* Calendar Grid */}
             <View style={styles.calendarGrid}>
               {calendarDays.map((item, index) => (
                 <TouchableOpacity
@@ -789,7 +779,6 @@ const EditAuction = () => {
               ))}
             </View>
 
-            {/* Time Picker */}
             <View style={styles.timePickerSection}>
               <ThemedText style={styles.timePickerTitle}>Choisir l'heure</ThemedText>
               
@@ -871,24 +860,6 @@ const EditAuction = () => {
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalActionButton, styles.modalCancelButton]}
-                onPress={() => setShowDatePickerModal(false)}
-              >
-                <ThemedText style={styles.modalCancelButtonText}>Annuler</ThemedText>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalActionButton, styles.modalConfirmButton]}
-                onPress={handleDateConfirm}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <ThemedText style={styles.modalConfirmButtonText}>Confirmer</ThemedText>
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1041,12 +1012,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  scrollIndicatorText: {
-    fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '600',
-    marginLeft: 4,
   },
   inputGroup: {
     gap: 15,
@@ -1217,10 +1182,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 10,
+    marginBottom: 10,
+    paddingBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  modalHeaderButtons: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  modalHeaderButton: {
+    padding: 5,
   },
   modalTitle: {
     fontSize: 20,
@@ -1268,27 +1240,27 @@ const styles = StyleSheet.create({
   },
   selectedDateDisplay: {
     alignItems: 'center',
-    marginBottom: 20,
-    padding: 15,
+    marginBottom: 10,
+    padding: 10,
     backgroundColor: Colors.primary + '10',
     borderRadius: 12,
   },
   selectedDateText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: Colors.primary,
-    marginBottom: 8,
+    marginBottom: 4,
     textTransform: 'capitalize',
     textAlign: 'center',
   },
   selectedTimeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
+    gap: 4,
+    marginBottom: 4,
   },
   selectedTimeText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     fontWeight: '500',
   },
@@ -1296,48 +1268,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 16,
+    gap: 2,
   },
   selectedDateBadgeText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   monthNavigation: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingHorizontal: 10,
+    marginBottom: 5,
+    paddingHorizontal: 5,
   },
   monthNavButton: {
-    padding: 10,
+    padding: 8,
   },
   monthYearText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#333',
   },
   daysOfWeekContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 10,
+    marginBottom: 5,
     paddingHorizontal: 5,
   },
   dayOfWeekText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#999',
-    width: 40,
+    width: 35,
     textAlign: 'center',
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 20,
+    marginBottom: 10,
     paddingHorizontal: 5,
   },
   calendarDay: {
@@ -1345,17 +1317,17 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 5,
+    marginBottom: 3,
   },
   calendarDayEmpty: {
     backgroundColor: 'transparent',
   },
   calendarDaySelected: {
     backgroundColor: Colors.primary,
-    borderRadius: 20,
+    borderRadius: 18,
   },
   calendarDayText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#333',
   },
   calendarDayTextSelected: {
@@ -1363,74 +1335,75 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   timePickerSection: {
-    marginTop: -80,
-    marginBottom: 15,
+    marginTop: 5,
+    marginBottom: 10,
   },
   timePickerTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 10,
+    marginBottom: 8,
+    marginTop: -90,
     textAlign: 'center',
   },
   timePickerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 5,
+    padding: 3,
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    borderRadius: 10,
   },
   timePickerColumn: {
     alignItems: 'center',
-    width: 70,
+    width: 60,
   },
   timePickerArrow: {
-    padding: 5,
+    padding: 3,
   },
   timePickerValue: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
     backgroundColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginVertical: 4,
+    marginVertical: 3,
   },
   timePickerValueText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: Colors.primary,
   },
   timePickerSeparator: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 5,
+    paddingHorizontal: 3,
   },
   timePickerSeparatorText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#666',
   },
   timePickerAmPm: {
-    marginLeft: 10,
+    marginLeft: 5,
     justifyContent: 'center',
   },
   timePickerAmPmButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 5,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    marginVertical: 2,
+    marginVertical: 1,
   },
   timePickerAmPmButtonActive: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
   timePickerAmPmText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
     color: '#666',
   },
@@ -1438,42 +1411,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   timePickerLabel: {
-    fontSize: 10,
+    fontSize: 8,
     color: '#666',
-    marginTop: 4,
+    marginTop: 2,
     textAlign: 'center',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  modalActionButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  modalCancelButton: {
-    backgroundColor: '#f0f0f0',
-  },
-  modalCancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
-  modalConfirmButton: {
-    backgroundColor: Colors.primary,
-  },
-  modalConfirmButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
   },
 });

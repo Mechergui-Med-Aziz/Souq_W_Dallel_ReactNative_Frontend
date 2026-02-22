@@ -11,11 +11,20 @@ export const userService = {
   updateUserWithPhoto: async (userId, userData, photoFile = null) => {
     const formData = new FormData();
     
+    let currentUser = null;
+    try {
+      currentUser = await userService.getUserById(userId);
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+    
     const userUpdate = {
       firstname: userData.firstname,
       lastname: userData.lastname,
       cin: parseInt(userData.cin),
       email: userData.email,
+      status: currentUser?.status || 'Activated',
+      role: currentUser?.role || 'User',
     };
     
     formData.append('user', JSON.stringify(userUpdate));

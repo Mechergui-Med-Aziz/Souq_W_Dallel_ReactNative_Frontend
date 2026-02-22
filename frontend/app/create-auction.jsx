@@ -740,10 +740,7 @@ const CreateAuction = () => {
         visible={showDatePickerModal}
         transparent
         animationType="slide"
-        onRequestClose={() => {
-          // Auto-confirm when closed with back button
-          handleDateConfirm();
-        }}
+        onRequestClose={() => setShowDatePickerModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.datePickerModalContent]}>
@@ -751,15 +748,22 @@ const CreateAuction = () => {
               <ThemedText style={styles.modalTitle}>
                 Choisir la date de fin
               </ThemedText>
-              <TouchableOpacity 
-                onPress={handleDateConfirm} // Save and close
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="checkmark-circle" size={28} color={Colors.primary} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderButtons}>
+                <TouchableOpacity 
+                  onPress={() => setShowDatePickerModal(false)}
+                  style={styles.modalHeaderButton}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handleDateConfirm}
+                  style={styles.modalHeaderButton}
+                >
+                  <Ionicons name="checkmark" size={24} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* Selected Date Display - Shows current selection clearly */}
             <View style={styles.selectedDateDisplay}>
               <ThemedText style={styles.selectedDateText}>
                 {tempDate.toLocaleDateString('fr-FR', {
@@ -783,7 +787,6 @@ const CreateAuction = () => {
               </View>
             </View>
 
-            {/* Month Navigation */}
             <View style={styles.monthNavigation}>
               <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavButton}>
                 <Ionicons name="chevron-back" size={24} color={Colors.primary} />
@@ -796,7 +799,6 @@ const CreateAuction = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Days of Week */}
             <View style={styles.daysOfWeekContainer}>
               {daysOfWeek.map(day => (
                 <ThemedText key={day} style={styles.dayOfWeekText}>
@@ -805,7 +807,6 @@ const CreateAuction = () => {
               ))}
             </View>
 
-            {/* Calendar Grid */}
             <View style={styles.calendarGrid}>
               {calendarDays.map((item, index) => (
                 <TouchableOpacity
@@ -837,7 +838,6 @@ const CreateAuction = () => {
               ))}
             </View>
 
-            {/* Time Picker - Improved Layout */}
             <View style={styles.timePickerSection}>
               <ThemedText style={styles.timePickerTitle}>Choisir l'heure</ThemedText>
               
@@ -920,25 +920,6 @@ const CreateAuction = () => {
                 </View>
               </View>
             </View>
-
-            {/* Action Buttons */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalActionButton, styles.modalCancelButton]}
-                onPress={() => setShowDatePickerModal(false)}
-              >
-                <ThemedText style={styles.modalCancelButtonText}>Annuler</ThemedText>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.modalActionButton, styles.modalConfirmButton]}
-                onPress={handleDateConfirm}
-              >
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <ThemedText style={styles.modalConfirmButtonText}>Confirmer</ThemedText>
-              </TouchableOpacity>
-            </View>
-            
           </View>
         </View>
       </Modal>
@@ -1237,10 +1218,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 10,
+    marginBottom: 10,
+    paddingBottom: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  modalHeaderButtons: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  modalHeaderButton: {
+    padding: 5,
   },
   modalTitle: {
     fontSize: 20,
@@ -1289,7 +1277,7 @@ const styles = StyleSheet.create({
   selectedDateDisplay: {
     alignItems: 'center',
     marginBottom: 20,
-    padding: 15,
+    padding: 10,
     backgroundColor: Colors.primary + '10',
     borderRadius: 12,
   },
@@ -1297,7 +1285,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.primary,
-    marginBottom: 8,
+    marginBottom: 6,
     textTransform: 'capitalize',
     textAlign: 'center',
   },
@@ -1305,7 +1293,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   selectedTimeText: {
     fontSize: 16,
@@ -1317,7 +1305,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.primary,
     paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingVertical: 2,
     borderRadius: 20,
     gap: 4,
   },
@@ -1330,7 +1318,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 1,
     paddingHorizontal: 10,
   },
   monthNavButton: {
@@ -1365,7 +1353,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   calendarDayEmpty: {
     backgroundColor: 'transparent',
@@ -1383,7 +1371,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   timePickerSection: {
-    marginTop: 5,
+    marginTop: 1,
     marginBottom: 15,
   },
   timePickerTitle: {
@@ -1392,7 +1380,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 10,
     textAlign: 'center',
-    marginTop:'-80'
+    marginTop:'-100'
   },
   timePickerContainer: {
     flexDirection: 'row',

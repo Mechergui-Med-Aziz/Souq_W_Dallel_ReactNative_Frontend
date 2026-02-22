@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  ScrollView, 
-  Image, 
-  TouchableOpacity, 
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  Image,
+  TouchableOpacity,
   Alert,
   Dimensions,
-  ActivityIndicator
+  ActivityIndicator,
+  TextInput,
+  Modal
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,7 +21,7 @@ import ThemedCard from '../../components/ThemedCard';
 import Spacer from '../../components/Spacer';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
-import { fetchAuctionById } from '../../store/slices/auctionSlice';
+import { fetchAuctionById, placeBid } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
 import { auctionService } from '../../store/services/auctionService';
 import { userService } from '../../store/services/userService';
@@ -46,15 +48,26 @@ const AuctionDetails = () => {
   const theme = Colors[colorScheme] ?? Colors.light;
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const { currentAuction, loading } = useAppSelector((state) => state.auction);
+  const { currentAuction, loading, placingBid } = useAppSelector((state) => state.auction);
   
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [auctionPhotos, setAuctionPhotos] = useState([]);
   const [timeRemaining, setTimeRemaining] = useState('');
+  const [timeRemainingDetailed, setTimeRemainingDetailed] = useState('');
   const [sellerDetails, setSellerDetails] = useState(null);
   const [sellerPhotoUrl, setSellerPhotoUrl] = useState(null);
   const [sellerPhotoRefreshing, setSellerPhotoRefreshing] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
+  const [isLastHour, setIsLastHour] = useState(false);
+  const [bidders, setBidders] = useState([]);
+  const [bidderNames, setBidderNames] = useState({});
+  const [highestBid, setHighestBid] = useState(0);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [bidAmount, setBidAmount] = useState('');
+  const [isHighestBidder, setIsHighestBidder] = useState(false);
+  const [userBid, setUserBid] = useState(0);
+  const [userParticipated, setUserParticipated] = useState(false);
+  const [userWon, setUserWon] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -72,14 +85,15 @@ const AuctionDetails = () => {
         setAuctionPhotos(photos);
       }
 
+      // Process bidders
+      processBidders();
+
       // Load seller details
       loadSellerDetails();
 
-      // Calculate time remaining and check expiration
+      // Calculate time remaining
       if (currentAuction.expireDate) {
         checkExpiration();
-        const timer = setInterval(checkExpiration, 60000);
-        return () => clearInterval(timer);
       }
     }
   }, [currentAuction]);
@@ -91,6 +105,60 @@ const AuctionDetails = () => {
       setSellerPhotoUrl(null);
     }
   }, [sellerDetails]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (currentAuction?.expireDate && !isExpired) {
+      checkExpiration();
+      // Update more frequently in last hour (every second)
+      const interval = isLastHour ? 1000 : 60000;
+      const timer = setInterval(checkExpiration, interval);
+      return () => clearInterval(timer);
+    }
+  }, [currentAuction, isLastHour, isExpired]);
+
+  const loadBidderNames = async (biddersArray) => {
+    const names = {};
+    for (const bidder of biddersArray) {
+      if (bidder.userId && !names[bidder.userId]) {
+        try {
+          const user = await userService.getUserById(bidder.userId);
+          const displayName = user?.firstname && user?.lastname 
+            ? `${user.firstname} ${user.lastname}`.trim()
+            : user?.email?.split('@')[0] || 'Utilisateur';
+          names[bidder.userId] = displayName;
+        } catch (error) {
+          names[bidder.userId] = 'Utilisateur';
+        }
+      }
+    }
+    setBidderNames(names);
+  };
+
+  const processBidders = () => {
+    if (currentAuction?.bidders) {
+      const biddersArray = Object.entries(currentAuction.bidders).map(([userId, amount]) => ({
+        userId,
+        amount,
+        isCurrentUser: userId === user?.id
+      })).sort((a, b) => b.amount - a.amount);
+      
+      setBidders(biddersArray);
+      loadBidderNames(biddersArray);
+      
+      if (biddersArray.length > 0) {
+        setHighestBid(biddersArray[0].amount);
+        setIsHighestBidder(biddersArray[0].userId === user?.id);
+      } else {
+        setHighestBid(currentAuction.startingPrice || 0);
+        setIsHighestBidder(false);
+      }
+      
+      const userBidObj = biddersArray.find(b => b.userId === user?.id);
+      setUserBid(userBidObj?.amount || 0);
+      setUserParticipated(!!userBidObj);
+    }
+  };
 
   const loadSellerPhoto = async () => {
     if (!sellerDetails?.photoId) {
@@ -121,8 +189,19 @@ const AuctionDetails = () => {
     
     if (!expired) {
       calculateTimeRemaining();
+      // Check if it's in the last hour
+      const diffHours = (expiration - now) / (1000 * 60 * 60);
+      setIsLastHour(diffHours <= 1);
     } else {
       setTimeRemaining('Expiré');
+      setTimeRemainingDetailed('Enchère terminée');
+      setIsLastHour(false);
+      
+      // Check if user won or lost
+      if (user && bidders.length > 0) {
+        const highestBidder = bidders[0];
+        setUserWon(highestBidder.userId === user.id);
+      }
     }
   };
 
@@ -134,6 +213,7 @@ const AuctionDetails = () => {
     
     if (now >= expiration) {
       setTimeRemaining('Expiré');
+      setTimeRemainingDetailed('Enchère terminée');
       setIsExpired(true);
       return;
     }
@@ -142,13 +222,24 @@ const AuctionDetails = () => {
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
     
+    // Detailed format for countdown
     if (diffDays > 0) {
-      setTimeRemaining(`${diffDays}j ${diffHours}h restantes`);
+      setTimeRemainingDetailed(`${diffDays}j ${diffHours}h ${diffMinutes}m`);
     } else if (diffHours > 0) {
-      setTimeRemaining(`${diffHours}h ${diffMinutes}m restantes`);
+      setTimeRemainingDetailed(`${diffHours}h ${diffMinutes}m ${diffSeconds}s`);
     } else {
-      setTimeRemaining(`${diffMinutes}m restantes`);
+      setTimeRemainingDetailed(`${diffMinutes}m ${diffSeconds}s`);
+    }
+    
+    // Short format for badge
+    if (diffDays > 0) {
+      setTimeRemaining(`${diffDays}j ${diffHours}h`);
+    } else if (diffHours > 0) {
+      setTimeRemaining(`${diffHours}h ${diffMinutes}m`);
+    } else {
+      setTimeRemaining(`${diffMinutes}m`);
     }
   };
 
@@ -168,7 +259,62 @@ const AuctionDetails = () => {
     try {
       await dispatch(fetchAuctionById(id)).unwrap();
     } catch (error) {
-      Alert.alert('Erreur', 'Échec du chargement des détails de l\'enchère');
+      Alert.alert('Erreur', 'Échec du chargement des détails');
+    }
+  };
+
+  const handlePlaceBid = () => {
+    if (!user) {
+      Alert.alert('Connexion requise', 'Veuillez vous connecter pour enchérir');
+      return;
+    }
+    
+    if (isExpired) {
+      Alert.alert('Enchère terminée', 'Cette enchère est expirée');
+      return;
+    }
+
+    if (currentAuction.sellerId === user.id) {
+      Alert.alert('Action non autorisée', 'Vous ne pouvez pas enchérir sur votre propre enchère');
+      return;
+    }
+
+    const minBid = highestBid + 1;
+    setBidAmount(minBid.toString());
+    setShowBidModal(true);
+  };
+
+  const submitBid = async () => {
+    if (!bidAmount || isNaN(bidAmount)) {
+      Alert.alert('Erreur', 'Veuillez entrer un montant valide');
+      return;
+    }
+
+    const amount = parseFloat(bidAmount);
+    const minBid = highestBid + 1;
+
+    if (amount < minBid) {
+      Alert.alert('Montant invalide', `Votre enchère doit être d'au moins ${minBid} TND`);
+      return;
+    }
+
+    try {
+      await dispatch(placeBid({
+        auctionId: id,
+        bidderId: user.id,
+        bidAmount: amount
+      })).unwrap();
+
+      setShowBidModal(false);
+      setBidAmount('');
+      
+      // Refresh auction data
+      await dispatch(fetchAuctionById(id)).unwrap();
+      
+      Alert.alert('Succès', 'Votre enchère a été placée avec succès');
+      
+    } catch (error) {
+      Alert.alert('Erreur', error.message || 'Échec du placement de l\'enchère');
     }
   };
 
@@ -195,8 +341,13 @@ const AuctionDetails = () => {
   const formatExpirationDate = (isoString) => {
     if (!isoString) return 'Aucune date d\'expiration';
     const date = new Date(isoString);
-    return date.toLocaleDateString('fr-FR') + ' à ' + 
-           date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const getCategoryInfo = () => {
@@ -218,7 +369,8 @@ const AuctionDetails = () => {
   if (loading || !currentAuction) {
     return (
       <ThemedView safe style={styles.loadingContainer}>
-        <ThemedText>Chargement des détails...</ThemedText>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <ThemedText style={styles.loadingText}>Chargement...</ThemedText>
       </ThemedView>
     );
   }
@@ -243,6 +395,7 @@ const AuctionDetails = () => {
           </View>
         </View>
 
+        {/* Images Section */}
         {auctionPhotos.length > 0 ? (
           <>
             <View style={styles.mainImageContainer}>
@@ -297,7 +450,7 @@ const AuctionDetails = () => {
         ) : (
           <View style={styles.noImage}>
             <Ionicons name="image" size={80} color="#ccc" />
-            <ThemedText style={styles.noImageText}>Aucune image disponible</ThemedText>
+            <ThemedText style={styles.noImageText}>Aucune image</ThemedText>
           </View>
         )}
 
@@ -325,11 +478,107 @@ const AuctionDetails = () => {
                   {formatPrice(currentAuction.startingPrice)}
                 </ThemedText>
               </View>
+              {timeRemaining && !isExpired && (
+                <View style={[styles.timeBadge, isLastHour && styles.lastHourBadge]}>
+                  <Ionicons 
+                    name={isLastHour ? "alert-circle" : "time-outline"} 
+                    size={16} 
+                    color="#fff" 
+                  />
+                  <ThemedText style={styles.timeBadgeText}>
+                    {timeRemaining}
+                  </ThemedText>
+                </View>
+              )}
             </View>
+
+            {/* Last hour countdown */}
+            {isLastHour && !isExpired && (
+              <View style={styles.countdownContainer}>
+                <Ionicons name="alert-circle" size={20} color="#fff" />
+                <ThemedText style={styles.countdownText}>
+                  Dernière heure ! {timeRemainingDetailed}
+                </ThemedText>
+              </View>
+            )}
+
+            <View style={styles.highestBidSection}>
+              <ThemedText style={styles.highestBidLabel}>
+                Enchère la plus élevée
+              </ThemedText>
+              <View style={styles.highestBidContainer}>
+                <ThemedText title style={styles.highestBid}>
+                  {formatPrice(highestBid)}
+                </ThemedText>
+                {isHighestBidder && !isExpired && (
+                  <View style={styles.bestBidderBadge}>
+                    <Ionicons name="trophy" size={16} color="#fff" />
+                    <ThemedText style={styles.bestBidderText}>
+                      Vous êtes le meilleur enchérisseur
+                    </ThemedText>
+                  </View>
+                )}
+                {isExpired && userParticipated && (
+                  <View style={[styles.resultBadge, userWon ? styles.wonBadge : styles.lostBadge]}>
+                    <Ionicons 
+                      name={userWon ? "trophy" : "close-circle"} 
+                      size={16} 
+                      color="#fff" 
+                    />
+                    <ThemedText style={styles.resultBadgeText}>
+                      {userWon ? 'Enchère gagnée' : 'Enchère perdue'}
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Bidders List */}
+            {bidders.length > 0 && (
+              <View style={styles.biddersSection}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="people" size={20} color={Colors.primary} />
+                  <ThemedText style={styles.sectionTitle}>
+                    Enchérisseurs ({bidders.length})
+                  </ThemedText>
+                </View>
+                
+                {bidders.map((bidder, index) => (
+                  <View key={bidder.userId} style={styles.bidderItem}>
+                    <View style={styles.bidderRank}>
+                      {index === 0 ? (
+                        <Ionicons name="trophy" size={20} color="#fbbf24" />
+                      ) : (
+                        <ThemedText style={styles.rankNumber}>#{index + 1}</ThemedText>
+                      )}
+                    </View>
+                    <View style={styles.bidderInfo}>
+                      <ThemedText style={[
+                        styles.bidderName,
+                        bidder.isCurrentUser && styles.currentUserText
+                      ]}>
+                        {bidder.isCurrentUser ? 'Vous' : (bidderNames[bidder.userId] || 'Utilisateur')}
+                      </ThemedText>
+                      {bidder.isCurrentUser && (
+                        <View style={styles.yourBidBadge}>
+                          <ThemedText style={styles.yourBidText}>Votre enchère</ThemedText>
+                        </View>
+                      )}
+                    </View>
+                    <ThemedText style={[
+                      styles.bidderAmount,
+                      index === 0 && styles.highestBidAmount
+                    ]}>
+                      {formatPrice(bidder.amount)}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
 
             <View style={[styles.expirationContainer, isExpired && styles.expiredContainer]}>
               <Ionicons 
-                name={isExpired ? "alert-circle" : "calendar"} 
+                name={isExpired ? "close-circle" : "calendar"} 
                 size={16} 
                 color={isExpired ? "#fff" : "#666"} 
               />
@@ -341,12 +590,12 @@ const AuctionDetails = () => {
             <View style={styles.descriptionSection}>
               <ThemedText style={styles.sectionTitle}>Description</ThemedText>
               <ThemedText style={styles.description}>
-                {currentAuction.description || 'Aucune description disponible.'}
+                {currentAuction.description || 'Aucune description'}
               </ThemedText>
             </View>
 
             <View style={styles.sellerSection}>
-              <ThemedText style={styles.sectionTitle}>Informations du vendeur</ThemedText>
+              <ThemedText style={styles.sectionTitle}>Vendeur</ThemedText>
               <View style={styles.sellerInfo}>
                 <View style={styles.sellerAvatar}>
                   {sellerPhotoUrl && !sellerPhotoRefreshing ? (
@@ -380,20 +629,115 @@ const AuctionDetails = () => {
                 </View>
               </View>
             </View>
-
-            <View style={styles.bidSection}>
-              <View style={styles.bidCountContainer}>
-                <Ionicons name="people" size={20} color={Colors.primary} />
-                <ThemedText style={styles.bidCountText}>
-                  {currentAuction.bidders ? Object.keys(currentAuction.bidders).length : 0} enchères placées
-                </ThemedText>
-              </View>
-            </View>
           </ThemedCard>
 
-          <Spacer height={40} />
+          {/* Bid Button */}
+          {!isExpired && currentAuction.sellerId !== user?.id && (
+            <TouchableOpacity
+              style={[styles.bidButton, placingBid && styles.disabledButton]}
+              onPress={handlePlaceBid}
+              disabled={placingBid}
+            >
+              <LinearGradient
+                colors={[Colors.primary, '#764ba2']}
+                style={styles.bidButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {placingBid ? (
+                  <View style={styles.buttonContent}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <ThemedText style={styles.bidButtonText}>
+                      Placement en cours...
+                    </ThemedText>
+                  </View>
+                ) : (
+                  <View style={styles.buttonContent}>
+                    <Ionicons name="hammer" size={24} color="#fff" />
+                    <ThemedText style={styles.bidButtonText}>
+                      Placer une enchère
+                    </ThemedText>
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
+
+      {/* Bid Modal */}
+      <Modal
+        visible={showBidModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBidModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText title style={styles.modalTitle}>
+                Placer une enchère
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowBidModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <ThemedText style={styles.modalLabel}>
+                Enchère actuelle la plus élevée
+              </ThemedText>
+              <ThemedText title style={styles.modalCurrentBid}>
+                {formatPrice(highestBid)}
+              </ThemedText>
+
+              <ThemedText style={styles.modalLabel}>
+                Montant minimum
+              </ThemedText>
+              <ThemedText style={styles.modalMinBid}>
+                {formatPrice(highestBid + 1)}
+              </ThemedText>
+
+              <View style={styles.bidInputContainer}>
+                <ThemedText style={styles.currencySymbol}>TND</ThemedText>
+                <TextInput
+                  style={styles.bidInput}
+                  value={bidAmount}
+                  onChangeText={setBidAmount}
+                  keyboardType="numeric"
+                  placeholder="Entrez votre enchère"
+                  placeholderTextColor="#999"
+                />
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelModalButton]}
+                  onPress={() => setShowBidModal(false)}
+                >
+                  <ThemedText style={styles.cancelModalButtonText}>
+                    Annuler
+                  </ThemedText>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.confirmModalButton]}
+                  onPress={submitBid}
+                  disabled={placingBid}
+                >
+                  {placingBid ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <ThemedText style={styles.confirmModalButtonText}>
+                      Confirmer
+                    </ThemedText>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 };
@@ -408,6 +752,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: Colors.primary,
   },
   scrollContent: {
     paddingBottom: 40,
@@ -541,45 +890,189 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 15,
+    marginBottom: 20,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   priceLabel: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginBottom: 2,
+  },
+  price: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.primary,
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  lastHourBadge: {
+    backgroundColor: '#ef4444',
+  },
+  timeBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  countdownContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ef4444',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    gap: 8,
+  },
+  countdownText: {
+    color: '#fff',
     fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  highestBidSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+  },
+  highestBidLabel: {
+    fontSize: 12,
     opacity: 0.7,
     marginBottom: 5,
   },
-  price: {
+  highestBidContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  highestBid: {
     fontSize: 28,
     fontWeight: 'bold',
     color: Colors.primary,
+  },
+  bestBidderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fbbf24',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  bestBidderText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  resultBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 4,
+  },
+  wonBadge: {
+    backgroundColor: '#4ade80',
+  },
+  lostBadge: {
+    backgroundColor: '#ef4444',
+  },
+  resultBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  biddersSection: {
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  bidderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  bidderRank: {
+    width: 30,
+    alignItems: 'center',
+  },
+  rankNumber: {
+    fontSize: 14,
+    color: '#666',
+  },
+  bidderInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bidderName: {
+    fontSize: 14,
+  },
+  currentUserText: {
+    fontWeight: 'bold',
+    color: Colors.primary,
+  },
+  yourBidBadge: {
+    backgroundColor: Colors.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  yourBidText: {
+    fontSize: 10,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  bidderAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  highestBidAmount: {
+    color: '#fbbf24',
+    fontWeight: 'bold',
   },
   expirationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
-    padding: 10,
+    padding: 12,
     backgroundColor: '#f0f8ff',
     borderRadius: 8,
+    gap: 8,
   },
   expiredContainer: {
-    backgroundColor: '#ef4444',
+    backgroundColor: '#fee2e2',
   },
   expirationText: {
     fontSize: 14,
-    marginLeft: 8,
     color: '#666',
+    flex: 1,
   },
   expiredText: {
-    color: '#fff',
+    color: '#ef4444',
     fontWeight: '600',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
   },
   descriptionSection: {
     marginBottom: 25,
@@ -633,19 +1126,123 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
   },
-  bidSection: {
-    marginTop: 10,
-    paddingTop: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+  bidButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  bidCountContainer: {
+  bidButtonGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
   },
-  bidCountText: {
+  bidButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 25,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    gap: 15,
+  },
+  modalLabel: {
     fontSize: 14,
-    marginLeft: 8,
+    opacity: 0.7,
+  },
+  modalCurrentBid: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 10,
+  },
+  modalMinBid: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fbbf24',
+    marginBottom: 15,
+  },
+  bidInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 15,
+  },
+  currencySymbol: {
+    paddingHorizontal: 15,
+    fontSize: 16,
     color: '#666',
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+  },
+  bidInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelModalButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  cancelModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  confirmModalButton: {
+    backgroundColor: Colors.primary,
+  },
+  confirmModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

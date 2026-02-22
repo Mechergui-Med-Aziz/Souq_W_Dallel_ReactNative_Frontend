@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { userService } from '../services/userService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const fetchUserById = createAsyncThunk(
   'user/fetchById',
@@ -17,10 +18,25 @@ export const updateUser = createAsyncThunk(
   'user/update',
   async ({ id, userData, photoFile = null }, { rejectWithValue }) => {
     try {
+      console.log('Updating user with data:', userData);
+      console.log('Photo file:', photoFile ? 'Yes' : 'No');
+      
       const updatedUser = await userService.updateUserWithPhoto(id, userData, photoFile);
+      
+      const userStr = await AsyncStorage.getItem('user');
+      if (userStr) {
+        const currentUser = JSON.parse(userStr);
+        const newUserData = {
+          ...currentUser,
+          ...updatedUser,
+        };
+        await AsyncStorage.setItem('user', JSON.stringify(newUserData));
+      }
+      
       return updatedUser;
     } catch (error) {
-      return rejectWithValue(error.message);
+      console.error('Update user error details:', error);
+      return rejectWithValue(error.message || 'Échec de la mise à jour du profil');
     }
   }
 );
@@ -90,6 +106,7 @@ const userSlice = createSlice({
       .addCase(updateUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+        console.error('Update rejected:', action.payload);
       })
       
       .addCase(deleteUserPhoto.pending, (state) => {

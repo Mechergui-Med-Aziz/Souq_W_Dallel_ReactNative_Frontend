@@ -24,4 +24,9 @@ export const API_ENDPOINTS = {
   DELETE_AUCTION: (id) => `/api/auctions/delete/${id}`,
   GET_AUCTIONS_BY_SELLER: (sellerId) => `/api/auctions/seller/${sellerId}`,
   GET_AUCTION_PHOTO: (auctionId, photoId) => `/api/auctions/${auctionId}/photos/${photoId}`,
+  PLACE_BID: (auctionId, bidderId, bidAmount) => `/api/auctions/bid/add/${auctionId}/${bidderId}/${bidAmount}`,
+  
+  // Notification endpoints
+  GET_NOTIFICATIONS: (userId) => `/api/notifications/${userId}`,
+  MARK_NOTIFICATION_READ: (id) => `/api/notifications/read/${id}`,
 };

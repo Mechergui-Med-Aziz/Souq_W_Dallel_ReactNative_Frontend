@@ -125,6 +125,13 @@ export const auctionService = {
     return await response.json();
   },
 
+  placeBid: async (auctionId, bidderId, bidAmount) => {
+    const response = await axiosInstance.put(
+      API_ENDPOINTS.PLACE_BID(auctionId, bidderId, bidAmount)
+    );
+    return response.data;
+  },
+
   deleteAuction: async (auctionId) => {
     const response = await axiosInstance.delete(API_ENDPOINTS.DELETE_AUCTION(auctionId));
     return response.data;

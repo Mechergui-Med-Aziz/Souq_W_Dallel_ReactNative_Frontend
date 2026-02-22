@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { auctionService } from '../services/auctionService';
+import { addNotification } from './notificationSlice';
 
 export const fetchAllAuctions = createAsyncThunk(
   'auction/fetchAll',
@@ -46,6 +47,19 @@ export const updateAuction = createAsyncThunk(
       return auction;
     } catch (error) {
       console.error('Update auction error:', error);
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const placeBid = createAsyncThunk(
+  'auction/placeBid',
+  async ({ auctionId, bidderId, bidAmount }, { rejectWithValue }) => {
+    try {
+      const result = await auctionService.placeBid(auctionId, bidderId, bidAmount);
+            
+      return result;
+    } catch (error) {
       return rejectWithValue(error.message);
     }
   }
