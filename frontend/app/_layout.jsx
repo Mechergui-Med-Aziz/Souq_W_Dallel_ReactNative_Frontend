@@ -5,11 +5,11 @@ import { StatusBar } from "expo-status-bar";
 import { Provider, useSelector } from "react-redux";
 import { persistor, store } from "../store";
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadToken } from '../store/slices/authSlice';
 import { useDispatch } from 'react-redux';
-import { StyleSheet, View, Text } from "react-native";
+import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
 import { fetchNotifications } from '../store/slices/notificationSlice';
 import { PersistGate } from 'redux-persist/integration/react';
 import { StripeProvider } from '@stripe/stripe-react-native';
@@ -37,6 +37,7 @@ function InitializeAuth() {
         
         if (token && userStr) {
           const user = JSON.parse(userStr);
+          console.log('Loaded user from storage:', user);
           dispatch(loadToken({ token, user }));
         }
       } catch (error) {
@@ -56,6 +57,15 @@ function AppContent() {
   const { token, user } = useSelector((state) => state.auth);
   const { unreadCount } = useSelector((state) => state.notifications || { unreadCount: 0 });
   const dispatch = useDispatch();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Check if user is admin
+    const adminCheck = user?.role?.toUpperCase() === 'ADMIN';
+    setIsAdmin(adminCheck);
+    console.log('User role:', user?.role);
+    console.log('Is admin:', adminCheck);
+  }, [user]);
 
   // Fetch notifications periodically
   useEffect(() => {
@@ -81,6 +91,7 @@ function AppContent() {
         <Stack.Screen name="index" options={{ href: null }} />
         <Stack.Screen name="create-auction" options={{ href: null }} />
         <Stack.Screen name="(dashboard)" options={{ href: null }} />
+        <Stack.Screen name="(admin)" options={{ href: null }} />
       </Stack>
     );
   }
@@ -148,7 +159,7 @@ function AppContent() {
           options={{
             title: 'Notifications',
             tabBarIcon: ({ focused, color }) => (
-              <View>
+              <View style={{ position: 'relative' }}>
                 <Ionicons
                   name={focused ? 'notifications' : 'notifications-outline'}
                   size={24}
@@ -180,10 +191,29 @@ function AppContent() {
           }}
         />
 
+        {/* Admin Dashboard Tab - Only visible for admins */}
+        {isAdmin && (
+          <Tabs.Screen
+            name="(admin)"
+            options={{
+              title: 'Dashboard',
+              tabBarIcon: ({ focused, color }) => (
+                  <Ionicons
+                    name={focused ? 'stats-chart' : 'stats-chart-outline'}
+                    size={24}
+                    color={color}
+                  />
+              ),
+            }}
+          />
+        )}
+
+        {/* Hidden screens - keep these as they are */}
         <Tabs.Screen name="(dashboard)/edit-profile" options={{ href: null }}/>
         <Tabs.Screen name="edit-auction/[id]" options={{ href: null }}/>
         <Tabs.Screen name="auction-details/[id]" options={{ href: null }}/>
         <Tabs.Screen name="(auth)" options={{ href: null }} />
+        <Tabs.Screen name="(admin)/_layout" options={{ href: null }} />
         <Tabs.Screen name="verify-account" options={{ href: null }}  />
         <Tabs.Screen name="reset-password" options={{ href: null }}  />
         <Tabs.Screen name="reset-password-verify" options={{ href: null }}  />
@@ -208,5 +238,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  adminIndicator: {
+    position: 'absolute',
+    top: 0,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

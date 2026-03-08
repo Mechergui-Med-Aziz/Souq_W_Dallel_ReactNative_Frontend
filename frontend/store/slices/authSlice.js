@@ -214,7 +214,15 @@ const authSlice = createSlice({
       .addCase(loginUser.fulfilled, (state, action) => {
         state.loading = false;
         state.token = action.payload.token;
-        state.user = action.payload;
+        state.user = {
+          id: action.payload.id,
+          email: action.payload.email,
+          role: action.payload.role,
+          status: action.payload.status,
+          firstname: action.payload.firstname,
+          lastname: action.payload.lastname,
+          cin: action.payload.cin
+        };
         state.error = null;
       })
       .addCase(loginUser.rejected, (state, action) => {

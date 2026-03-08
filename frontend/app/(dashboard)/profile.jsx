@@ -247,6 +247,17 @@ const Profile = () => {
               <TouchableOpacity onPress={handleEditProfile} style={styles.headerIcon}>
                 <Ionicons name="create-outline" size={22} color={theme.iconColorFocused} />
               </TouchableOpacity>
+
+              {/* Admin Dashboard Button */}
+              {authUser?.role?.toUpperCase() === 'ADMIN' && (
+                <TouchableOpacity 
+                  onPress={() => router.push('/(admin)')}
+                  style={[styles.headerIcon, { backgroundColor: Colors.primary, borderRadius: 20, padding: 8 }]}
+                >
+                  <Ionicons name="shield" size={22} color="#fff" />
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity 
                 onPress={handleLogout} 
                 disabled={isLoggingOut}

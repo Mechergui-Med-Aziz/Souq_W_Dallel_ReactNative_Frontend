@@ -1,4 +1,4 @@
-export const API_BASE_URL = 'http://192.168.1.5:8080';
+export const API_BASE_URL = 'http://192.168.100.20:8080';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
@@ -15,6 +15,7 @@ export const API_ENDPOINTS = {
   UPDATE_USER: (id) => `/api/users/update/${id}`,
   USER_PHOTO: (id) => `/api/users/${id}/photo`,
   DELETE_USER_PHOTO: (id) => `/api/users/${id}/photo`,
+  GET_ALL_USERS: '/api/users/all', // New endpoint
   
   // Auction endpoints
   GET_ALL_AUCTIONS: '/api/auctions/all',
@@ -25,6 +26,11 @@ export const API_ENDPOINTS = {
   GET_AUCTIONS_BY_SELLER: (sellerId) => `/api/auctions/seller/${sellerId}`,
   GET_AUCTION_PHOTO: (auctionId, photoId) => `/api/auctions/${auctionId}/photos/${photoId}`,
   PLACE_BID: (auctionId, bidderId, bidAmount) => `/api/auctions/bid/add/${auctionId}/${bidderId}/${bidAmount}`,
+  
+  // Deposit endpoints
+  GET_ALL_DEPOSITS: '/api/auctionsdeposits/getAll',
+  GET_DEPOSITS_BY_AUCTION: (auctionId) => `/api/auctionsdeposits/getByAuctionId?auctionId=${auctionId}`,
+  GET_DEPOSIT_BY_ID: (id) => `/api/auctionsdeposits/id/${id}`,
   
   // Notification endpoints
   GET_NOTIFICATIONS: (userId) => `/api/notifications/${userId}`,

@@ -140,10 +140,16 @@ export const auctionService = {
   getUserAuctions: async (userId) => {
     try {
       const url = API_ENDPOINTS.GET_AUCTIONS_BY_SELLER(userId);
+      console.log('Fetching user auctions from:', `${API_BASE_URL}${url}`);
       const response = await axiosInstance.get(url);
+      console.log('User auctions response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error fetching user auctions:', error);
+      if (error.response) {
+        console.error('Error status:', error.response.status);
+        console.error('Error data:', error.response.data);
+      }
       return [];
     }
   },

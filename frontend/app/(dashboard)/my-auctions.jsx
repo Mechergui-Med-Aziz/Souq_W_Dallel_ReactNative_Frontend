@@ -1,3 +1,4 @@
+// app/(dashboard)/my-auctions.jsx - FINAL VERSION
 import { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
@@ -15,10 +16,9 @@ import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
 import ThemedCard from '../../components/ThemedCard';
 import AuctionCard from '../../components/AuctionCard';
-import Spacer from '../../components/Spacer';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
-import { fetchUserAuctions } from '../../store/slices/auctionSlice';
+import { fetchAllAuctions } from '../../store/slices/auctionSlice';
 import { Colors } from '../../constants/Colors';
 
 const MyAuctions = () => {
@@ -27,97 +27,216 @@ const MyAuctions = () => {
   const theme = Colors[colorScheme] ?? Colors.light;
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const { userAuctions, loading } = useAppSelector((state) => state.auction);
+  const { auctions, loading } = useAppSelector((state) => state.auction);
   
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('all');
+  const [selectedFilter, setSelectedFilter] = useState('created');
+  
+  // Derived state
+  const [createdAuctions, setCreatedAuctions] = useState([]);
   const [participatedAuctions, setParticipatedAuctions] = useState([]);
   const [wonAuctions, setWonAuctions] = useState([]);
   const [lostAuctions, setLostAuctions] = useState([]);
+  const [activeAuctions, setActiveAuctions] = useState([]);
+  const [endedAuctions, setEndedAuctions] = useState([]);
+  const [filteredAuctions, setFilteredAuctions] = useState([]);
 
   useEffect(() => {
     if (user?.id) {
-      loadUserAuctions();
+      loadAllAuctions();
     }
   }, [user?.id]);
 
   useEffect(() => {
-    // Calculate participated auctions (where user has bid)
-    const participated = userAuctions.filter(auction => 
-      auction.bidders && Object.keys(auction.bidders).includes(user?.id)
+    processAuctions();
+  }, [auctions, user?.id]);
+
+  useEffect(() => {
+    filterAuctions();
+  }, [selectedFilter, createdAuctions, participatedAuctions, wonAuctions, lostAuctions, activeAuctions, endedAuctions]);
+
+  const loadAllAuctions = async () => {
+    try {
+      await dispatch(fetchAllAuctions()).unwrap();
+      console.log('All auctions loaded:', auctions.length);
+    } catch (error) {
+      console.error('Error loading auctions:', error);
+    }
+  };
+
+  const processAuctions = () => {
+    if (!auctions.length || !user?.id) return;
+
+    console.log('Processing auctions for user:', user.id);
+    console.log('Total auctions:', auctions.length);
+    
+    const now = new Date();
+    
+    // Created auctions (where user is seller)
+    const created = auctions.filter(auction => auction.sellerId === user.id);
+    setCreatedAuctions(created);
+
+    // Participated auctions (where user has bid)
+    const participated = auctions.filter(auction => 
+      auction.bidders && Object.keys(auction.bidders).includes(user.id)
     );
     setParticipatedAuctions(participated);
 
-    // Calculate won auctions (where user is highest bidder and auction ended)
+    // Won auctions - Check if user's bid is the highest AND auction is ended
     const won = participated.filter(auction => {
-      if (!auction.bidders || auction.status !== 'ended') return false;
-      const bids = Object.entries(auction.bidders);
+      const isEnded = auction.status === 'ended' || new Date(auction.expireDate) <= now;
+      if (!isEnded) return false;
+      
+      const bids = Object.entries(auction.bidders || {});
       if (bids.length === 0) return false;
-      const highestBidder = bids.sort((a, b) => b[1] - a[1])[0][0];
-      return highestBidder === user?.id;
+      
+      const bidAmounts = bids.map(([, amount]) => amount);
+      const highestBid = Math.max(...bidAmounts);
+      
+      const highestBidders = bids
+        .filter(([, amount]) => amount === highestBid)
+        .map(([id]) => id);
+      
+      return highestBidders.includes(user.id);
     });
     setWonAuctions(won);
 
-    // Calculate lost auctions (where user participated but didn't win)
+    // Lost auctions - User participated but not highest bidder AND auction is ended
     const lost = participated.filter(auction => {
-      if (!auction.bidders || auction.status !== 'ended') return false;
-      const bids = Object.entries(auction.bidders);
+      const isEnded = auction.status === 'ended' || new Date(auction.expireDate) <= now;
+      if (!isEnded) return false;
+      
+      const bids = Object.entries(auction.bidders || {});
       if (bids.length === 0) return false;
-      const highestBidder = bids.sort((a, b) => b[1] - a[1])[0][0];
-      return highestBidder !== user?.id;
+      
+      const bidAmounts = bids.map(([, amount]) => amount);
+      const highestBid = Math.max(...bidAmounts);
+      
+      const highestBidders = bids
+        .filter(([, amount]) => amount === highestBid)
+        .map(([id]) => id);
+      
+      return !highestBidders.includes(user.id);
     });
     setLostAuctions(lost);
 
-  }, [userAuctions, user?.id]);
+    // Active auctions (not expired) - Only show user's active auctions
+    const active = created.filter(auction => 
+      auction.status === 'active' && new Date(auction.expireDate) > now
+    );
+    setActiveAuctions(active);
 
-  const loadUserAuctions = async () => {
-    try {
-      await dispatch(fetchUserAuctions(user.id)).unwrap();
-    } catch (error) {
-      console.error('Error loading user auctions:', error);
+    // Ended auctions - Only show user's created auctions that ended
+    const ended = created.filter(auction => 
+      auction.status === 'ended' || new Date(auction.expireDate) <= now
+    );
+    setEndedAuctions(ended);
+
+    console.log('Created:', created.length);
+    console.log('Participated:', participated.length);
+    console.log('Won:', won.length);
+    console.log('Lost:', lost.length);
+    console.log('Active (user):', active.length);
+    console.log('Ended (user):', ended.length);
+  };
+
+  const filterAuctions = () => {
+    switch (selectedFilter) {
+      case 'created':
+        setFilteredAuctions(createdAuctions);
+        break;
+      case 'participated':
+        setFilteredAuctions(participatedAuctions);
+        break;
+      case 'won':
+        setFilteredAuctions(wonAuctions);
+        break;
+      case 'lost':
+        setFilteredAuctions(lostAuctions);
+        break;
+      case 'active':
+        setFilteredAuctions(activeAuctions);
+        break;
+      case 'ended':
+        setFilteredAuctions(endedAuctions);
+        break;
+      default:
+        setFilteredAuctions(createdAuctions);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadUserAuctions();
+    await loadAllAuctions();
     setRefreshing(false);
   };
 
-  const getFilteredAuctions = () => {
-    switch (filter) {
-      case 'created':
-        return userAuctions.filter(auction => auction.sellerId === user?.id);
-      case 'participated':
-        return participatedAuctions;
-      case 'won':
-        return wonAuctions;
-      case 'lost':
-        return lostAuctions;
-      case 'active':
-        return userAuctions.filter(a => a.status?.toLowerCase() === 'active');
-      case 'ended':
-        return userAuctions.filter(a => a.status?.toLowerCase() === 'ended');
-      default:
-        return userAuctions;
+  const getStats = () => ({
+    created: createdAuctions.length,
+    participated: participatedAuctions.length,
+    won: wonAuctions.length,
+    lost: lostAuctions.length,
+    active: activeAuctions.length,
+    ended: endedAuctions.length
+  });
+
+  const stats = getStats();
+
+  const handleAuctionPress = (auctionId) => {
+    console.log('Auction pressed:', auctionId, 'Filter:', selectedFilter);
+    
+    // Navigate to edit page for created and active auctions
+    if (selectedFilter === 'created' || selectedFilter === 'active') {
+      router.push(`/edit-auction/${auctionId}`);
+    } 
+    // Navigate to details page for participated, won, lost, and ended auctions
+    else {
+      router.push(`/auction-details/${auctionId}`);
     }
   };
 
-  const getStats = () => {
-    const created = userAuctions.filter(a => a.sellerId === user?.id).length;
-    const participated = participatedAuctions.length;
-    const won = wonAuctions.length;
-    const lost = lostAuctions.length;
-    
-    return { created, participated, won, lost };
-  };
+  const FilterChip = ({ id, label, count, icon }) => (
+    <TouchableOpacity
+      style={[
+        styles.filterChip,
+        selectedFilter === id && styles.filterChipActive
+      ]}
+      onPress={() => setSelectedFilter(id)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.filterChipContent}>
+        <Ionicons 
+          name={icon} 
+          size={16} 
+          color={selectedFilter === id ? '#fff' : Colors.primary} 
+        />
+        <ThemedText style={[
+          styles.filterChipLabel,
+          selectedFilter === id && styles.filterChipLabelActive
+        ]}>
+          {label}
+        </ThemedText>
+      </View>
+      <View style={[
+        styles.filterChipBadge,
+        selectedFilter === id && styles.filterChipBadgeActive
+      ]}>
+        <ThemedText style={[
+          styles.filterChipBadgeText,
+          selectedFilter === id && styles.filterChipBadgeTextActive
+        ]}>
+          {count}
+        </ThemedText>
+      </View>
+    </TouchableOpacity>
+  );
 
-  const stats = getStats();
-  const filteredAuctions = getFilteredAuctions();
-
-  const handleAuctionPress = (auctionId) => {
-    router.push(`/edit-auction/${auctionId}`);
-  };
+  const renderAuctionItem = ({ item }) => (
+    <AuctionCard 
+      auction={item} 
+      onPress={() => handleAuctionPress(item.id)}
+    />
+  );
 
   return (
     <ThemedView safe style={styles.container}>
@@ -139,90 +258,38 @@ const MyAuctions = () => {
         </View>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        <ThemedCard style={styles.statsCard}>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <ThemedText title style={styles.statNumber}>
-                {stats.created}
-              </ThemedText>
-              <ThemedText style={styles.statLabel}>Créées</ThemedText>
-            </View>
-            
-            <View style={styles.statDivider} />
-            
-            <View style={styles.statItem}>
-              <ThemedText title style={[styles.statNumber, { color: '#3b82f6' }]}>
-                {stats.participated}
-              </ThemedText>
-              <ThemedText style={styles.statLabel}>Participées</ThemedText>
-            </View>
-            
-            <View style={styles.statDivider} />
-            
-            <View style={styles.statItem}>
-              <ThemedText title style={[styles.statNumber, { color: '#fbbf24' }]}>
-                {stats.won}
-              </ThemedText>
-              <ThemedText style={styles.statLabel}>Gagnées</ThemedText>
-            </View>
-            
-            <View style={styles.statDivider} />
-            
-            <View style={styles.statItem}>
-              <ThemedText title style={[styles.statNumber, { color: '#ef4444' }]}>
-                {stats.lost}
-              </ThemedText>
-              <ThemedText style={styles.statLabel}>Perdues</ThemedText>
-            </View>
-          </View>
-        </ThemedCard>
+      {/* Filter Chips */}
+      <View style={styles.filtersWrapper}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.filtersScroll}
+          contentContainerStyle={styles.filtersContainer}
+        >
+          <FilterChip id="created" label="Créées" count={stats.created} icon="create-outline" />
+          <FilterChip id="active" label="Actives" count={stats.active} icon="play-circle-outline" />
+          <FilterChip id="participated" label="Participées" count={stats.participated} icon="people-outline" />
+          <FilterChip id="won" label="Gagnées" count={stats.won} icon="trophy-outline" />
+          <FilterChip id="lost" label="Perdues" count={stats.lost} icon="close-circle-outline" />
+          <FilterChip id="ended" label="Terminées" count={stats.ended} icon="stop-circle-outline" />
+        </ScrollView>
       </View>
 
-      {/* Filters */}
-      <View style={styles.filtersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {[
-            { id: 'all', label: 'Toutes' },
-            { id: 'created', label: 'Mes créations' },
-            { id: 'participated', label: 'Participées' },
-            { id: 'won', label: 'Gagnées' },
-            { id: 'lost', label: 'Perdues' },
-            { id: 'active', label: 'Actives' },
-            { id: 'ended', label: 'Terminées' }
-          ].map((filterType) => (
-            <TouchableOpacity
-              key={filterType.id}
-              style={[
-                styles.filterButton,
-                filter === filterType.id && styles.filterButtonActive
-              ]}
-              onPress={() => setFilter(filterType.id)}
-            >
-              <ThemedText style={[
-                styles.filterText,
-                filter === filterType.id && styles.filterTextActive
-              ]}>
-                {filterType.label}
-              </ThemedText>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+      {/* Info text about navigation */}
+      <View style={styles.infoContainer}>
+        <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+        <ThemedText style={styles.infoText}>
+          {selectedFilter === 'created' || selectedFilter === 'active' 
+            ? 'Cliquez pour modifier vos enchères' 
+            : 'Cliquez pour voir les détails des enchères'}
+        </ThemedText>
       </View>
 
       {/* Auctions List */}
       <FlatList
         data={filteredAuctions}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => handleAuctionPress(item.id)}>
-            <AuctionCard 
-              auction={item}
-              onPress={() => handleAuctionPress(item.id)}
-            />
-          </TouchableOpacity>
-        )}
+        renderItem={renderAuctionItem}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -273,61 +340,99 @@ const styles = StyleSheet.create({
   createButton: {
     padding: 5,
   },
-  statsContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  statsCard: {
-    borderRadius: 15,
-    padding: 20,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  filtersWrapper: {
+    marginTop: 15,
     marginBottom: 5,
+    paddingBottom: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  statLabel: {
-    fontSize: 10,
-    opacity: 0.7,
-  },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: '#e0e0e0',
+  filtersScroll: {
+    maxHeight: 60,
   },
   filtersContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingHorizontal: 15,
+    gap: 12,
+    paddingRight: 25,
   },
-  filterButton: {
-    paddingHorizontal: 16,
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 30,
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
+    paddingLeft: 14,
+    paddingRight: 10,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    minWidth: 120,
+    height: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  filterButtonActive: {
+  filterChipActive: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  filterText: {
-    fontSize: 12,
+  filterChipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  filterChipLabel: {
+    fontSize: 13,
+    fontWeight: '500',
     color: '#666',
   },
-  filterTextActive: {
+  filterChipLabelActive: {
     color: '#fff',
+  },
+  filterChipBadge: {
+    backgroundColor: '#e0e0e0',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterChipBadgeActive: {
+    backgroundColor: '#fff',
+  },
+  filterChipBadgeText: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#666',
+  },
+  filterChipBadgeTextActive: {
+    color: Colors.primary,
+  },
+  infoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
+    backgroundColor: '#f8f9fa',
+    marginHorizontal: 15,
+    marginBottom: 10,
+    borderRadius: 10,
+  },
+  infoText: {
+    fontSize: 12,
+    color: '#666',
+    flex: 1,
   },
   auctionsList: {
-    padding: 20,
+    padding: 15,
     paddingTop: 0,
   },
   emptyContainer: {
@@ -345,6 +450,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
     textAlign: 'center',
-    marginBottom: 20,
   },
 });

@@ -8,6 +8,16 @@ export const userService = {
     return response.data;
   },
 
+  getAllUsers: async () => {
+    try {
+      const response = await axiosInstance.get(API_ENDPOINTS.GET_ALL_USERS);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+      return [];
+    }
+  },
+
   updateUserWithPhoto: async (userId, userData, photoFile = null) => {
     const formData = new FormData();
     
@@ -68,5 +78,45 @@ export const userService = {
   deleteUserPhoto: async (userId) => {
     const response = await axiosInstance.delete(API_ENDPOINTS.DELETE_USER_PHOTO(userId));
     return response.data;
+  },
+
+  blockUser: async (userId) => {
+    try {
+      const response = await axiosInstance.put(`/api/users/admin/block/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error blocking user:', error);
+      throw error;
+    }
+  },
+
+  unblockUser: async (userId) => {
+    try {
+      const response = await axiosInstance.put(`/api/users/admin/unblock/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error unblocking user:', error);
+      throw error;
+    }
+  },
+
+  makeAdmin: async (userId) => {
+    try {
+      const response = await axiosInstance.put(`/api/users/admin/make-admin/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error making user admin:', error);
+      throw error;
+    }
+  },
+
+  makeUser: async (userId) => {
+    try {
+      const response = await axiosInstance.put(`/api/users/admin/make-user/${userId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error making user:', error);
+      throw error;
+    }
   },
 };
