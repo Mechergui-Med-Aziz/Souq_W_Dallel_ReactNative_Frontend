@@ -1,4 +1,4 @@
-export const API_BASE_URL = 'http://192.168.100.20:8080';
+export const API_BASE_URL = 'http://192.168.1.4:8080';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
@@ -15,7 +15,7 @@ export const API_ENDPOINTS = {
   UPDATE_USER: (id) => `/api/users/update/${id}`,
   USER_PHOTO: (id) => `/api/users/${id}/photo`,
   DELETE_USER_PHOTO: (id) => `/api/users/${id}/photo`,
-  GET_ALL_USERS: '/api/users/all', // New endpoint
+  GET_ALL_USERS: '/api/users/all',
   
   // Auction endpoints
   GET_ALL_AUCTIONS: '/api/auctions/all',
@@ -24,8 +24,19 @@ export const API_ENDPOINTS = {
   UPDATE_AUCTION: (id) => `/api/auctions/update/${id}`,
   DELETE_AUCTION: (id) => `/api/auctions/delete/${id}`,
   GET_AUCTIONS_BY_SELLER: (sellerId) => `/api/auctions/seller/${sellerId}`,
+  GET_AUCTIONS_BY_STATUS: (status) => `/api/auctions/auctions/${status}`,
   GET_AUCTION_PHOTO: (auctionId, photoId) => `/api/auctions/${auctionId}/photos/${photoId}`,
   PLACE_BID: (auctionId, bidderId, bidAmount) => `/api/auctions/bid/add/${auctionId}/${bidderId}/${bidAmount}`,
+  
+  // Review endpoints
+  ADD_REVIEW: (auctionId, reviewerId, review) => `/api/auctions/auction/addReview/${auctionId}/${reviewerId}/${review}`,
+  GET_REVIEWS: (auctionId) => `/api/auctions/auction/reviews/${auctionId}`,
+  
+  // Admin auction actions
+  UPDATE_AUCTION_STATUS: (auctionId, adminId, status) => `/api/auctions/auction/${auctionId}/${adminId}/${status}`,
+  
+  // Auction winner
+  PROCESS_WINNER: (auctionId) => `/api/auctions/auction/ended/${auctionId}`,
   
   // Deposit endpoints
   GET_ALL_DEPOSITS: '/api/auctionsdeposits/getAll',
@@ -38,4 +49,5 @@ export const API_ENDPOINTS = {
   
   // Payment endpoints
   CREATE_PAYMENT_INTENT: '/api/payment/pay1dt',
+  PAY_AUCTION: (auctionId, amount) => `/api/payment/payAuction/${auctionId}/${amount}`,
 };

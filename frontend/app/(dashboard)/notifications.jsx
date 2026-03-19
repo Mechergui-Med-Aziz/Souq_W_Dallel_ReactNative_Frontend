@@ -181,6 +181,9 @@ const Notifications = () => {
     if (notification.type === 'BID_PLACED' && notification.bidderId && bidderNames[notification.bidderId]) {
       return `${bidderNames[notification.bidderId]} a placé une enchère de ${notification.bidAmount || ''} TND`;
     }
+    if (notification.type === 'AUCTION_WON') {
+      return notification.message || 'Félicitations ! Vous avez gagné une enchère';
+    }
     return notification.message;
   };
 

@@ -8,6 +8,11 @@ export const auctionService = {
     return response.data;
   },
 
+  getAuctionsByStatus: async (status) => {
+    const response = await axiosInstance.get(API_ENDPOINTS.GET_AUCTIONS_BY_STATUS(status));
+    return response.data;
+  },
+
   getAuctionById: async (auctionId) => {
     const response = await axiosInstance.get(API_ENDPOINTS.GET_AUCTION(auctionId));
     return response.data;
@@ -30,7 +35,7 @@ export const auctionService = {
       description: auctionData.description,
       startingPrice: parseFloat(auctionData.startingPrice),
       category: auctionData.category,
-      status: 'active',
+      status: 'pending',
       bidders: {},
       sellerId: userId,
       expireDate: expireDate
@@ -82,10 +87,8 @@ export const auctionService = {
       expireDate: auctionData.expireDate,
     };
     
-    console.log('Updating auction with object:', auctionObject);
     formData.append('auction', JSON.stringify(auctionObject));
     
-    // Append new photos
     if (photoFiles.length > 0) {
       photoFiles.forEach((file, index) => {
         const uriParts = file.uri.split('.');
@@ -123,6 +126,33 @@ export const auctionService = {
     }
     
     return await response.json();
+  },
+
+  // Admin approve/deny auction
+  updateAuctionStatus: async (auctionId, adminId, status) => {
+    const response = await axiosInstance.put(
+      API_ENDPOINTS.UPDATE_AUCTION_STATUS(auctionId, adminId, status)
+    );
+    return response.data;
+  },
+
+  // Review methods
+  addReview: async (auctionId, reviewerId, review) => {
+    const response = await axiosInstance.post(
+      API_ENDPOINTS.ADD_REVIEW(auctionId, reviewerId, review)
+    );
+    return response.data;
+  },
+
+  getReviews: async (auctionId) => {
+    const response = await axiosInstance.get(API_ENDPOINTS.GET_REVIEWS(auctionId));
+    return response.data;
+  },
+
+  // Process winner after auction ends
+  processWinner: async (auctionId) => {
+    const response = await axiosInstance.get(API_ENDPOINTS.PROCESS_WINNER(auctionId));
+    return response.data;
   },
 
   placeBid: async (auctionId, bidderId, bidAmount) => {

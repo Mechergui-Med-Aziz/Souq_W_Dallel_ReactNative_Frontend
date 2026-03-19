@@ -24,7 +24,7 @@ export const store = configureStore({
     auction: auctionReducer,
     notifications: notificationReducer,
     payment: persistedPaymentReducer,
-    deposit: depositReducer, // Add this
+    deposit: depositReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

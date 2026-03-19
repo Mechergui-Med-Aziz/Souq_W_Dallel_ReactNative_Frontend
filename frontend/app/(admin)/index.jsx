@@ -1,4 +1,3 @@
-// app/(admin)/index.jsx - Cleaned Version
 import { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
@@ -22,7 +21,11 @@ import ThemedText from '../../components/ThemedText';
 import ThemedCard from '../../components/ThemedCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
-import { fetchAllAuctions } from '../../store/slices/auctionSlice';
+import { 
+  fetchAllAuctions, 
+  approveAuction, 
+  denyAuction 
+} from '../../store/slices/auctionSlice';
 import { userService } from '../../store/services/userService';
 import { auctionService } from '../../store/services/auctionService';
 import { depositService } from '../../store/services/depositService';
@@ -61,6 +64,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [auctionFilter, setAuctionFilter] = useState('all');
   const [processingUserId, setProcessingUserId] = useState(null);
+  const [processingAuctionId, setProcessingAuctionId] = useState(null);
   
   // Stats
   const [stats, setStats] = useState({
@@ -71,6 +75,7 @@ const AdminDashboard = () => {
     activeAuctions: 0,
     endedAuctions: 0,
     pendingAuctions: 0,
+    deniedAuctions: 0,
     totalBids: 0,
     auctionDeposits: 0,
     bidDeposits: 0
@@ -125,8 +130,16 @@ const AdminDashboard = () => {
       const usersData = await userService.getAllUsers();
       setUsers(usersData);
       
-      // Load deposits
-      const depositsData = await depositService.getAllDeposits();
+      // Load deposits - with better error handling
+      let depositsData = [];
+      try {
+        depositsData = await depositService.getAllDeposits();
+        console.log('Deposits loaded:', depositsData.length);
+      } catch (depositError) {
+        console.error('Failed to load deposits:', depositError);
+        depositsData = []; // Set to empty array on error
+      }
+      
       setDeposits(depositsData);
       setFilteredDeposits(depositsData);
       
@@ -134,7 +147,7 @@ const AdminDashboard = () => {
       
     } catch (error) {
       console.error('Error loading dashboard data:', error);
-      Alert.alert('Erreur', 'Impossible de charger les données');
+      Alert.alert('Erreur', 'Impossible de charger certaines données');
     }
   };
 
@@ -237,6 +250,10 @@ const AdminDashboard = () => {
       a.status === 'pending'
     ).length;
     
+    const deniedAuctions = auctionsData.filter(a => 
+      a.status === 'denied'
+    ).length;
+    
     const totalBids = auctionsData.reduce((sum, auction) => 
       sum + (auction.bidders ? Object.keys(auction.bidders).length : 0), 0
     );
@@ -259,6 +276,7 @@ const AdminDashboard = () => {
       activeAuctions,
       endedAuctions,
       pendingAuctions,
+      deniedAuctions,
       totalBids,
       auctionDeposits: auctionDepositsTotal,
       bidDeposits: bidDepositsTotal
@@ -290,6 +308,57 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleApproveAuction = async (auctionId) => {
+    Alert.alert(
+      'Approuver l\'enchère',
+      'Êtes-vous sûr de vouloir approuver cette enchère ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Approuver',
+          onPress: async () => {
+            try {
+              setProcessingAuctionId(auctionId);
+              await dispatch(approveAuction({ auctionId, adminId: user.id })).unwrap();
+              Alert.alert('Succès', 'Enchère approuvée avec succès');
+              await loadDashboardData(); // Refresh data
+            } catch (error) {
+              Alert.alert('Erreur', 'Échec de l\'approbation');
+            } finally {
+              setProcessingAuctionId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDenyAuction = async (auctionId) => {
+    Alert.alert(
+      'Refuser l\'enchère',
+      'Êtes-vous sûr de vouloir refuser cette enchère ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Refuser',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setProcessingAuctionId(auctionId);
+              await dispatch(denyAuction({ auctionId, adminId: user.id })).unwrap();
+              Alert.alert('Succès', 'Enchère refusée');
+              await loadDashboardData(); // Refresh data
+            } catch (error) {
+              Alert.alert('Erreur', 'Échec du refus');
+            } finally {
+              setProcessingAuctionId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleBlockUser = async (userId, currentStatus) => {
     try {
       setProcessingUserId(userId);
@@ -314,15 +383,12 @@ const AdminDashboard = () => {
     try {
       setProcessingUserId(userId);
       if (currentRole === 'ADMIN') {
-        // Demote to USER
         await userService.makeUser(userId);
         Alert.alert('Succès', 'Utilisateur rétrogradé en utilisateur standard');
       } else {
-        // Promote to ADMIN
         await userService.makeAdmin(userId);
         Alert.alert('Succès', 'Utilisateur promu administrateur');
       }
-      // Refresh user list
       const updatedUsers = await userService.getAllUsers();
       setUsers(updatedUsers);
     } catch (error) {
@@ -496,16 +562,23 @@ const AdminDashboard = () => {
                     legendFontSize: 12
                   },
                   {
-                    name: 'Terminées',
-                    population: stats.endedAuctions || 0,
+                    name: 'En attente',
+                    population: stats.pendingAuctions || 0,
+                    color: '#fbbf24',
+                    legendFontColor: theme.text,
+                    legendFontSize: 12
+                  },
+                  {
+                    name: 'Refusées',
+                    population: stats.deniedAuctions || 0,
                     color: '#ef4444',
                     legendFontColor: theme.text,
                     legendFontSize: 12
                   },
                   {
-                    name: 'En attente',
-                    population: stats.pendingAuctions || 0,
-                    color: '#fbbf24',
+                    name: 'Terminées',
+                    population: stats.endedAuctions || 0,
+                    color: '#9ca3af',
                     legendFontColor: theme.text,
                     legendFontSize: 12
                   }
@@ -704,13 +777,17 @@ const AdminDashboard = () => {
   const renderAuctionsList = () => {
     const filteredAuctions = auctions.filter(auction => {
       if (auctionFilter === 'all') return true;
-      return auction.status === auctionFilter;
+      if (auctionFilter === 'pending') return auction.status === 'pending';
+      if (auctionFilter === 'active') return auction.status === 'active';
+      if (auctionFilter === 'denied') return auction.status === 'denied';
+      if (auctionFilter === 'ended') return auction.status === 'ended';
+      return true;
     });
 
     return (
       <View>
         <View style={styles.auctionFilters}>
-          {['all', 'active', 'pending', 'ended'].map((filter) => (
+          {['all', 'pending', 'active', 'denied', 'ended'].map((filter) => (
             <TouchableOpacity
               key={filter}
               style={[
@@ -722,7 +799,8 @@ const AdminDashboard = () => {
               <Ionicons 
                 name={filter === 'all' ? 'apps' : 
                       filter === 'active' ? 'play-circle' :
-                      filter === 'pending' ? 'time' : 'stop-circle'} 
+                      filter === 'pending' ? 'time' :
+                      filter === 'denied' ? 'close-circle' : 'stop-circle'} 
                 size={14} 
                 color={auctionFilter === filter ? '#fff' : '#666'} 
               />
@@ -732,7 +810,8 @@ const AdminDashboard = () => {
               ]}>
                 {filter === 'all' ? 'Toutes' : 
                  filter === 'active' ? 'Actives' :
-                 filter === 'pending' ? 'En attente' : 'Terminées'}
+                 filter === 'pending' ? 'En attente' :
+                 filter === 'denied' ? 'Refusées' : 'Terminées'}
               </ThemedText>
             </TouchableOpacity>
           ))}
@@ -745,10 +824,18 @@ const AdminDashboard = () => {
                 <ThemedText style={styles.auctionItemTitle}>{auction.title}</ThemedText>
                 <View style={[
                   styles.smallStatusBadge,
-                  { backgroundColor: auction.status === 'active' ? '#4ade80' :
-                                   auction.status === 'pending' ? '#fbbf24' : '#ef4444' }
+                  { backgroundColor: 
+                    auction.status === 'active' ? '#4ade80' :
+                    auction.status === 'pending' ? '#fbbf24' :
+                    auction.status === 'denied' ? '#ef4444' : 
+                    auction.status === 'ended' ? '#9ca3af' : '#666' }
                 ]}>
-                  <ThemedText style={styles.smallStatusText}>{auction.status}</ThemedText>
+                  <ThemedText style={styles.smallStatusText}>
+                    {auction.status === 'active' ? 'Active' :
+                     auction.status === 'pending' ? 'En attente' :
+                     auction.status === 'denied' ? 'Refusée' :
+                     auction.status === 'ended' ? 'Terminée' : auction.status}
+                  </ThemedText>
                 </View>
               </View>
               
@@ -774,6 +861,41 @@ const AdminDashboard = () => {
                   </ThemedText>
                 </View>
               </View>
+
+              {/* Approve/Deny buttons for pending auctions */}
+              {auction.status === 'pending' && (
+                <View style={styles.adminActions}>
+                  <TouchableOpacity
+                    style={[styles.adminActionButton, styles.approveButton]}
+                    onPress={() => handleApproveAuction(auction.id)}
+                    disabled={processingAuctionId === auction.id}
+                  >
+                    {processingAuctionId === auction.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                        <ThemedText style={styles.adminActionText}>Approuver</ThemedText>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.adminActionButton, styles.denyButton]}
+                    onPress={() => handleDenyAuction(auction.id)}
+                    disabled={processingAuctionId === auction.id}
+                  >
+                    {processingAuctionId === auction.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="close" size={16} color="#fff" />
+                        <ThemedText style={styles.adminActionText}>Refuser</ThemedText>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
             </ThemedCard>
           </TouchableOpacity>
         ))}
@@ -851,6 +973,16 @@ const AdminDashboard = () => {
                   <Ionicons name="people" size={16} color={Colors.primary} />
                   <ThemedText style={styles.modalAuctionDetailText}>
                     Enchérisseurs: {selectedAuction.bidders ? Object.keys(selectedAuction.bidders).length : 0}
+                  </ThemedText>
+                </View>
+
+                <View style={styles.modalAuctionDetail}>
+                  <Ionicons name="information-circle" size={16} color={Colors.primary} />
+                  <ThemedText style={styles.modalAuctionDetailText}>
+                    Statut: {selectedAuction.status === 'pending' ? 'En attente' :
+                             selectedAuction.status === 'active' ? 'Active' :
+                             selectedAuction.status === 'denied' ? 'Refusée' :
+                             selectedAuction.status === 'ended' ? 'Terminée' : selectedAuction.status}
                   </ThemedText>
                 </View>
               </ThemedCard>
@@ -1304,6 +1436,36 @@ const styles = StyleSheet.create({
   auctionItemDetailText: {
     fontSize: 11,
     color: '#666',
+  },
+  adminActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  adminActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    minWidth: 100,
+    justifyContent: 'center',
+  },
+  approveButton: {
+    backgroundColor: '#4ade80',
+  },
+  denyButton: {
+    backgroundColor: '#ef4444',
+  },
+  adminActionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   bottomPadding: {
     height: 40,

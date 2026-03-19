@@ -13,6 +13,7 @@ import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
 import { fetchNotifications } from '../store/slices/notificationSlice';
 import { PersistGate } from 'redux-persist/integration/react';
 import { StripeProvider } from '@stripe/stripe-react-native';
+import { startExpirationChecker, stopExpirationChecker } from '../store/services/expirationService';
 
 export default function RootLayout() {
   return (
@@ -80,6 +81,17 @@ function AppContent() {
 
     return () => clearInterval(interval);
   }, [token, user?.id]);
+
+  useEffect(() => {
+    if (token && user) {
+      // Start the expiration checker when user is logged in
+      startExpirationChecker();
+      
+      return () => {
+        stopExpirationChecker();
+      };
+    }
+  }, [token, user]);
   
   if (!token) {
     return (
@@ -208,7 +220,7 @@ function AppContent() {
           />
         )}
 
-        {/* Hidden screens - keep these as they are */}
+        {/* Hidden screens */}
         <Tabs.Screen name="(dashboard)/edit-profile" options={{ href: null }}/>
         <Tabs.Screen name="edit-auction/[id]" options={{ href: null }}/>
         <Tabs.Screen name="auction-details/[id]" options={{ href: null }}/>

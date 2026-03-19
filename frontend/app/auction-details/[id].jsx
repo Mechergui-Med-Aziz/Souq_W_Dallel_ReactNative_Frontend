@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,7 +9,8 @@ import {
   Dimensions,
   ActivityIndicator,
   TextInput,
-  Modal
+  Modal,
+  FlatList
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,13 +22,19 @@ import ThemedCard from '../../components/ThemedCard';
 import Spacer from '../../components/Spacer';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
-import { fetchAuctionById, placeBid } from '../../store/slices/auctionSlice';
+import { 
+  fetchAuctionById, 
+  placeBid,
+  addReview,
+  fetchReviews 
+} from '../../store/slices/auctionSlice';
 import { checkPaymentStatus, markAsPaid } from '../../store/slices/paymentSlice';
 import { Colors } from '../../constants/Colors';
 import { auctionService } from '../../store/services/auctionService';
 import { userService } from '../../store/services/userService';
-import PaymentModal from '../../components/PaymentModal';
 import { paymentService } from '../../store/services/paymentService';
+import PaymentModal from '../../components/PaymentModal';
+import AuctionPaymentModal from '../../components/AuctionPaymentModal';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -51,7 +58,7 @@ const AuctionDetails = () => {
   const theme = Colors[colorScheme] ?? Colors.light;
   const { user } = useAuth();
   const dispatch = useAppDispatch();
-  const { currentAuction, loading, placingBid } = useAppSelector((state) => state.auction);
+  const { currentAuction, loading, placingBid, reviews } = useAppSelector((state) => state.auction);
   const { paidUsers } = useAppSelector((state) => state.payment);
   
   // UI State
@@ -62,8 +69,16 @@ const AuctionDetails = () => {
   const [sellerPhotoRefreshing, setSellerPhotoRefreshing] = useState(false);
   const [bidders, setBidders] = useState([]);
   const [bidderNames, setBidderNames] = useState({});
+  const [reviewUsers, setReviewUsers] = useState({});
+  const [reviewPhotos, setReviewPhotos] = useState({}); // Cache for review photos
   const [showBidModal, setShowBidModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showAuctionPaymentModal, setShowAuctionPaymentModal] = useState(false);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [showAddReviewModal, setShowAddReviewModal] = useState(false);
+  const [reviewText, setReviewText] = useState('');
+  const [userReview, setUserReview] = useState(null);
+  const [auctionReviews, setAuctionReviews] = useState([]);
   
   // Bid State
   const [bidAmount, setBidAmount] = useState('');
@@ -73,6 +88,9 @@ const AuctionDetails = () => {
   const [userParticipated, setUserParticipated] = useState(false);
   const [userWon, setUserWon] = useState(false);
   const [hasPaidForThisAuction, setHasPaidForThisAuction] = useState(false);
+  const [checkingPaymentStatus, setCheckingPaymentStatus] = useState(false);
+  const [paymentDeadline, setPaymentDeadline] = useState(null);
+  const [timeUntilDeadline, setTimeUntilDeadline] = useState('');
   
   // Timer State
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -88,14 +106,22 @@ const AuctionDetails = () => {
   useEffect(() => {
     if (id) {
       loadAuction();
+      loadReviews();
     }
   }, [id]);
 
   useEffect(() => {
     const checkAuctionPayment = async () => {
       if (user?.id && id) {
-        const paid = await paymentService.hasPaidForAuction(user.id, id);
-        setHasPaidForThisAuction(paid);
+        setCheckingPaymentStatus(true);
+        try {
+          const paid = await paymentService.hasPaidForAuction(user.id, id);
+          setHasPaidForThisAuction(paid);
+        } catch (error) {
+          console.error('Error checking payment status:', error);
+        } finally {
+          setCheckingPaymentStatus(false);
+        }
       }
     };
     
@@ -114,6 +140,7 @@ const AuctionDetails = () => {
   useEffect(() => {
     if (currentAuction) {
       processAuctionData();
+      checkWinnerPaymentStatus();
     }
   }, [currentAuction, user?.id]);
 
@@ -140,6 +167,156 @@ const AuctionDetails = () => {
       if (timer) clearInterval(timer);
     };
   }, [currentAuction?.expireDate, isExpired, isLastHour]);
+
+  // Payment deadline timer
+  useEffect(() => {
+    let timer;
+    
+    if (paymentDeadline && new Date() <= paymentDeadline) {
+      timer = setInterval(() => {
+        const now = new Date();
+        const diff = paymentDeadline - now;
+        
+        if (diff <= 0) {
+          setTimeUntilDeadline('00:00:00');
+          clearInterval(timer);
+        } else {
+          const hours = Math.floor(diff / (1000 * 60 * 60));
+          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+          setTimeUntilDeadline(
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+          );
+        }
+      }, 1000);
+    }
+    
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [paymentDeadline]);
+
+  useEffect(() => {
+    if (currentAuction && user) {
+      checkWinnerAndPaymentStatus();
+    }
+  }, [currentAuction, user]);
+
+  const checkWinnerAndPaymentStatus = () => {
+    if (!currentAuction || !user) return;
+    
+    // Check if auction is ended
+    if (currentAuction.status === 'ended') {
+      // Check if user is the winner
+      const bids = Object.entries(currentAuction.bidders || {});
+      if (bids.length === 0) return;
+      
+      const sortedBids = bids.sort((a, b) => b[1] - a[1]);
+      const winnerId = sortedBids[0][0];
+      const isWinner = winnerId === user.id;
+      
+      setUserWon(isWinner);
+      
+      // Check payment deadline (24h from expiration)
+      if (isWinner && currentAuction.expireDate) {
+        const expireDate = new Date(currentAuction.expireDate);
+        const deadline = new Date(expireDate.getTime() + 24 * 60 * 60 * 1000);
+        const now = new Date();
+        
+        if (now <= deadline) {
+          setPaymentDeadline(deadline);
+        } else {
+          setPaymentDeadline(null);
+        }
+      }
+    }
+  };
+
+  const loadReviews = async () => {
+    try {
+      const result = await dispatch(fetchReviews(id)).unwrap();
+      const reviewsData = result.reviews || {};
+      
+      // Convert MultiValueMap to array without timestamps
+      const reviewsArray = [];
+      const userPromises = [];
+      
+      if (reviewsData) {
+        Object.keys(reviewsData).forEach(userId => {
+          const userReviews = reviewsData[userId];
+          if (Array.isArray(userReviews)) {
+            userReviews.forEach((review) => {
+              const reviewObj = {
+                userId,
+                review: typeof review === 'string' ? review : review.text || '',
+              };
+              reviewsArray.push(reviewObj);
+              
+              // Fetch user data for this reviewer
+              userPromises.push(
+                userService.getUserById(userId)
+                  .then(userData => ({ userId, userData }))
+                  .catch(() => ({ userId, userData: null }))
+              );
+            });
+          }
+        });
+      }
+      
+      setAuctionReviews(reviewsArray);
+      
+      // Fetch all user data
+      const userResults = await Promise.all(userPromises);
+      const userMap = {};
+      const photoMap = {};
+      
+      userResults.forEach(({ userId, userData }) => {
+        if (userData) {
+          userMap[userId] = userData;
+          // Preload and cache photo URLs
+          if (userData.photoId) {
+            const photoUrl = userService.getUserPhotoUrl(userId, userData.photoId);
+            // Test if image loads
+            Image.prefetch(photoUrl).catch(() => {});
+            photoMap[userId] = photoUrl;
+          }
+        }
+      });
+      
+      setReviewUsers(userMap);
+      setReviewPhotos(photoMap);
+      
+      // Check if current user has a review
+      if (user) {
+        const userReviews = reviewsArray.filter(r => r.userId === user.id);
+        if (userReviews.length > 0) {
+          setUserReview(userReviews[0].review);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading reviews:', error);
+    }
+  };
+
+  const checkWinnerPaymentStatus = () => {
+    if (!currentAuction || !user) return;
+    
+    const bids = Object.entries(currentAuction.bidders || {});
+    if (bids.length === 0) return;
+    
+    const sortedBids = bids.sort((a, b) => b[1] - a[1]);
+    const winnerId = sortedBids[0][0];
+    const isWinner = winnerId === user.id;
+    
+    setUserWon(isWinner);
+    
+    // Check payment deadline (24h from expiration)
+    if (isWinner && isExpired && currentAuction.expireDate) {
+      const expireDate = new Date(currentAuction.expireDate);
+      const deadline = new Date(expireDate.getTime() + 24 * 60 * 60 * 1000);
+      setPaymentDeadline(deadline);
+    }
+  };
 
   const loadAuction = async () => {
     try {
@@ -222,9 +399,7 @@ const AuctionDetails = () => {
 
     try {
       setSellerPhotoRefreshing(true);
-      // Make sure we have both seller ID and photo ID
       const photoUrl = userService.getUserPhotoUrl(sellerDetails.id, sellerDetails.photoId);
-      console.log('Seller photo URL:', photoUrl); // Debug log
       setSellerPhotoUrl(photoUrl);
     } catch (error) {
       console.error('Error loading seller photo:', error);
@@ -261,19 +436,12 @@ const AuctionDetails = () => {
     
     if (!expired) {
       calculateTimeRemaining();
-      // Check if it's in the last hour
       const diffHours = (expiration - now) / (1000 * 60 * 60);
       setIsLastHour(diffHours <= 1);
     } else {
       setTimeRemaining('Expiré');
       setTimeRemainingDetailed('Enchère terminée');
       setIsLastHour(false);
-      
-      // Check if user won or lost
-      if (user && bidders.length > 0) {
-        const highestBidder = bidders[0];
-        setUserWon(highestBidder.userId === user.id);
-      }
     }
   };
 
@@ -296,21 +464,14 @@ const AuctionDetails = () => {
     const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     const diffSeconds = Math.floor((diffMs % (1000 * 60)) / 1000);
     
-    // Detailed format for countdown
     if (diffDays > 0) {
       setTimeRemainingDetailed(`${diffDays}j ${diffHours}h ${diffMinutes}m`);
-    } else if (diffHours > 0) {
-      setTimeRemainingDetailed(`${diffHours}h ${diffMinutes}m ${diffSeconds}s`);
-    } else {
-      setTimeRemainingDetailed(`${diffMinutes}m ${diffSeconds}s`);
-    }
-    
-    // Short format for badge
-    if (diffDays > 0) {
       setTimeRemaining(`${diffDays}j ${diffHours}h`);
     } else if (diffHours > 0) {
+      setTimeRemainingDetailed(`${diffHours}h ${diffMinutes}m ${diffSeconds}s`);
       setTimeRemaining(`${diffHours}h ${diffMinutes}m`);
     } else {
+      setTimeRemainingDetailed(`${diffMinutes}m ${diffSeconds}s`);
       setTimeRemaining(`${diffMinutes}m`);
     }
   };
@@ -332,25 +493,28 @@ const AuctionDetails = () => {
       return;
     }
 
-    // If this is the user's first bid in THIS auction and they haven't paid for it
     if (isFirstBid && !hasPaidForThisAuction) {
       setShowPaymentModal(true);
       return;
     }
 
-    // Otherwise show the bid modal
     const minBid = highestBid + 1;
     setBidAmount(minBid.toString());
     setShowBidModal(true);
   };
 
-  // Update handlePaymentComplete
   const handlePaymentComplete = () => {
     setHasPaidForThisAuction(true);
-    // Show bid modal after payment
     const minBid = highestBid + 1;
     setBidAmount(minBid.toString());
     setShowBidModal(true);
+  };
+
+  const handleAuctionPaymentComplete = async () => {
+    setHasPaidForThisAuction(true);
+    Alert.alert('Succès', 'Paiement effectué avec succès !');
+    setShowAuctionPaymentModal(false);
+    await loadAuction(); // Refresh auction data
   };
 
   const submitBid = async () => {
@@ -376,8 +540,6 @@ const AuctionDetails = () => {
 
       setShowBidModal(false);
       setBidAmount('');
-      
-      // Refresh auction data
       await dispatch(fetchAuctionById(id)).unwrap();
       
       Alert.alert('Succès', 'Votre enchère a été placée avec succès');
@@ -385,6 +547,60 @@ const AuctionDetails = () => {
     } catch (error) {
       Alert.alert('Erreur', error.message || 'Échec du placement de l\'enchère');
     }
+  };
+
+  // Review handlers
+  const handleAddReview = async () => {
+    if (!user) {
+      Alert.alert('Connexion requise', 'Veuillez vous connecter pour publier un avis');
+      return;
+    }
+
+    if (!reviewText.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer un commentaire');
+      return;
+    }
+
+    try {
+      await dispatch(addReview({
+        auctionId: id,
+        reviewerId: user.id,
+        review: reviewText.trim()
+      })).unwrap();
+
+      Alert.alert('Succès', 'Votre avis a été ajouté');
+      setShowAddReviewModal(false);
+      setReviewText('');
+      await loadReviews(); // Reload reviews
+      
+    } catch (error) {
+      Alert.alert('Erreur', error.message || 'Échec de l\'ajout de l\'avis');
+    }
+  };
+
+  const handleUpdateReview = () => {
+    handleAddReview();
+  };
+
+  const handleDeleteReview = () => {
+    Alert.alert(
+      'Supprimer l\'avis',
+      'Êtes-vous sûr de vouloir supprimer votre avis ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              Alert.alert('Info', 'Fonctionnalité à implémenter dans le backend');
+            } catch (error) {
+              Alert.alert('Erreur', 'Échec de la suppression');
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Utility functions
@@ -491,7 +707,6 @@ const AuctionDetails = () => {
               </View>
             </View>
             
-            {/* Thumbnail Images */}
             {auctionPhotos.length > 1 && (
               <View style={styles.thumbnailContainer}>
                 <ScrollView 
@@ -609,6 +824,83 @@ const AuctionDetails = () => {
               </View>
             </View>
 
+            {/* Winner Payment Section */}
+            {isExpired && userWon && (
+              <View style={styles.winnerSection}>
+                {!hasPaidForThisAuction ? (
+                  <>
+                    {paymentDeadline && new Date() <= paymentDeadline && (
+                      <TouchableOpacity
+                        style={styles.paymentButton}
+                        onPress={() => setShowAuctionPaymentModal(true)}
+                        disabled={checkingPaymentStatus}
+                      >
+                        <LinearGradient
+                          colors={['#fbbf24', '#f59e0b']}
+                          style={styles.paymentButtonGradient}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                        >
+                          <View style={styles.buttonContent}>
+                            <Ionicons name="card" size={24} color="#fff" />
+                            <ThemedText style={styles.paymentButtonText}>
+                              Payer {formatPrice(highestBid)} maintenant
+                            </ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* Payment deadline timer */}
+                    {paymentDeadline && new Date() <= paymentDeadline && (
+                      <View style={styles.deadlineContainer}>
+                        <Ionicons name="time-outline" size={20} color="#856404" />
+                        <View style={styles.deadlineTextContainer}>
+                          <ThemedText style={styles.deadlineLabel}>
+                            Délai de paiement
+                          </ThemedText>
+                          <ThemedText style={styles.deadlineTimer}>
+                            {timeUntilDeadline || '24:00:00'}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.deadlineBadge}>
+                          <ThemedText style={styles.deadlineBadgeText}>
+                            {paymentDeadline.toLocaleDateString('fr-FR', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </ThemedText>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <View style={styles.paidContainer}>
+                    <LinearGradient
+                      colors={['#4ade80', '#22c55e']}
+                      style={styles.paidGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <View style={styles.paidContent}>
+                        <Ionicons name="checkmark-circle" size={28} color="#fff" />
+                        <View>
+                          <ThemedText style={styles.paidTitle}>
+                            Paiement confirmé
+                          </ThemedText>
+                          <ThemedText style={styles.paidSubtitle}>
+                            Enchère payée - Merci !
+                          </ThemedText>
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Bidders List */}
             {bidders.length > 0 && (
               <View style={styles.biddersSection}>
@@ -651,6 +943,123 @@ const AuctionDetails = () => {
                 ))}
               </View>
             )}
+
+            {/* Reviews Section - UPDATED: No timestamps, slimmer design, accessible to all users */}
+            <View style={styles.reviewsSection}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="star" size={20} color={Colors.primary} />
+                <ThemedText style={styles.sectionTitle}>
+                  Avis ({auctionReviews.length})
+                </ThemedText>
+                
+                {/* Review button for ALL users */}
+                <TouchableOpacity 
+                  style={styles.addReviewButton}
+                  onPress={() => {
+                    if (!user) {
+                      Alert.alert(
+                        'Connexion requise',
+                        'Veuillez vous connecter pour publier un avis',
+                        [
+                          { text: 'Annuler', style: 'cancel' },
+                          { text: 'Se connecter', onPress: () => router.push('/(auth)/login') }
+                        ]
+                      );
+                    } else {
+                      setShowAddReviewModal(true);
+                    }
+                  }}
+                >
+                  <LinearGradient
+                    colors={[Colors.primary, '#764ba2']}
+                    style={styles.addReviewGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="add" size={18} color="#fff" />
+                    <ThemedText style={styles.addReviewText}>
+                      Publier votre avis
+                    </ThemedText>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+
+              {auctionReviews.length > 0 ? (
+                <>
+                  {auctionReviews.slice(0, 3).map((review, index) => {
+                    const reviewer = reviewUsers[review.userId];
+                    const isCurrentUser = review.userId === user?.id;
+                    
+                    return (
+                      <View key={`${review.userId}-${index}`} style={styles.reviewItem}>
+                        <View style={styles.reviewHeader}>
+                          {/* User Avatar with Photo - Using cached photos */}
+                          <View style={styles.reviewerAvatarContainer}>
+                            {reviewer?.photoId && reviewPhotos[review.userId] ? (
+                              <Image 
+                                source={{ uri: reviewPhotos[review.userId] }}
+                                style={styles.reviewerAvatarImage}
+                                onError={() => {
+                                  // Remove from cache on error
+                                  const updatedPhotos = {...reviewPhotos};
+                                  delete updatedPhotos[review.userId];
+                                  setReviewPhotos(updatedPhotos);
+                                }}
+                              />
+                            ) : (
+                              <LinearGradient
+                                colors={[Colors.primary, '#764ba2']}
+                                style={styles.reviewerAvatarGradient}
+                              >
+                                <ThemedText style={styles.reviewerAvatarText}>
+                                  {reviewer?.firstname?.charAt(0).toUpperCase() || 
+                                   reviewer?.email?.charAt(0).toUpperCase() || 
+                                   review.userId.substring(0, 1).toUpperCase()}
+                                </ThemedText>
+                              </LinearGradient>
+                            )}
+                          </View>
+                          
+                          <View style={styles.reviewerInfo}>
+                            <View style={styles.reviewerNameRow}>
+                              <ThemedText style={styles.reviewerName}>
+                                {isCurrentUser ? 'Vous' : 
+                                 reviewer ? `${reviewer.firstname || ''} ${reviewer.lastname || ''}`.trim() || reviewer.email :
+                                 `Utilisateur ${review.userId.substring(0, 4)}`}
+                              </ThemedText>
+                            </View>
+                          </View>
+                        </View>
+                        <ThemedText style={styles.reviewText}>
+                          {review.review}
+                        </ThemedText>
+                      </View>
+                    );
+                  })}
+                  
+                  {auctionReviews.length > 3 && (
+                    <TouchableOpacity 
+                      style={styles.viewAllReviews}
+                      onPress={() => setShowReviewsModal(true)}
+                    >
+                      <ThemedText style={styles.viewAllReviewsText}>
+                        Voir tous les avis ({auctionReviews.length})
+                      </ThemedText>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <View style={styles.emptyReviewsContainer}>
+                  <ThemedText style={styles.noReviewsText}>
+                    Aucun avis pour cette enchère
+                  </ThemedText>
+                  <ThemedText style={styles.noReviewsSubtext}>
+                    Soyez le premier à donner votre avis !
+                  </ThemedText>
+                </View>
+              )}
+            </View>
 
             {/* Expiration Container */}
             <View style={[styles.expirationContainer, isExpired && styles.expiredContainer]}>
@@ -818,12 +1227,169 @@ const AuctionDetails = () => {
         </View>
       </Modal>
 
-      {/* Payment Modal */}
+      {/* Add Review Modal */}
+      <Modal
+        visible={showAddReviewModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAddReviewModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText title style={styles.modalTitle}>
+                {userReview ? 'Modifier mon avis' : 'Publier un avis'}
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowAddReviewModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <TextInput
+                style={styles.reviewTextInput}
+                placeholder="Votre avis sur cette enchère..."
+                value={reviewText}
+                onChangeText={setReviewText}
+                multiline
+                numberOfLines={4}
+                maxLength={500}
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelModalButton]}
+                  onPress={() => setShowAddReviewModal(false)}
+                >
+                  <ThemedText style={styles.cancelModalButtonText}>
+                    Annuler
+                  </ThemedText>
+                </TouchableOpacity>
+
+                {userReview ? (
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.confirmModalButton]}
+                    onPress={handleUpdateReview}
+                  >
+                    <ThemedText style={styles.confirmModalButtonText}>
+                      Modifier
+                    </ThemedText>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.confirmModalButton]}
+                    onPress={handleAddReview}
+                  >
+                    <ThemedText style={styles.confirmModalButtonText}>
+                      Publier
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {userReview && (
+                <TouchableOpacity
+                  style={styles.deleteReviewButton}
+                  onPress={handleDeleteReview}
+                >
+                  <Ionicons name="trash-outline" size={20} color={Colors.warning} />
+                  <ThemedText style={styles.deleteReviewText}>
+                    Supprimer mon avis
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* All Reviews Modal - UPDATED: No timestamps, slimmer design */}
+      <Modal
+        visible={showReviewsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReviewsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.reviewsModalContent]}>
+            <View style={styles.modalHeader}>
+              <ThemedText title style={styles.modalTitle}>
+                Tous les avis ({auctionReviews.length})
+              </ThemedText>
+              <TouchableOpacity onPress={() => setShowReviewsModal(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={auctionReviews}
+              keyExtractor={(item, index) => `${item.userId}-${index}`}
+              renderItem={({ item }) => {
+                const reviewer = reviewUsers[item.userId];
+                const isCurrentUser = item.userId === user?.id;
+                
+                return (
+                  <View style={styles.reviewItem}>
+                    <View style={styles.reviewHeader}>
+                      {/* User Avatar with Photo - Using cached photos */}
+                      <View style={styles.reviewerAvatarContainer}>
+                        {reviewer?.photoId && reviewPhotos[item.userId] ? (
+                          <Image 
+                            source={{ uri: reviewPhotos[item.userId] }}
+                            style={styles.reviewerAvatarImage}
+                          />
+                        ) : (
+                          <LinearGradient
+                            colors={[Colors.primary, '#764ba2']}
+                            style={styles.reviewerAvatarGradient}
+                          >
+                            <ThemedText style={styles.reviewerAvatarText}>
+                              {reviewer?.firstname?.charAt(0).toUpperCase() || 
+                               reviewer?.email?.charAt(0).toUpperCase() || 
+                               item.userId.substring(0, 1).toUpperCase()}
+                            </ThemedText>
+                          </LinearGradient>
+                        )}
+                      </View>
+                      
+                      <View style={styles.reviewerInfo}>
+                        <View style={styles.reviewerNameRow}>
+                          <ThemedText style={styles.reviewerName}>
+                            {isCurrentUser ? 'Vous' : 
+                             reviewer ? `${reviewer.firstname || ''} ${reviewer.lastname || ''}`.trim() || reviewer.email :
+                             `Utilisateur ${item.userId.substring(0, 4)}`}
+                          </ThemedText>
+                        </View>
+                      </View>
+                    </View>
+                    <ThemedText style={styles.reviewText}>
+                      {item.review}
+                    </ThemedText>
+                  </View>
+                );
+              }}
+              contentContainerStyle={styles.reviewsList}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Payment Modal (1 DT tax) */}
       <PaymentModal
         visible={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         onPaymentComplete={handlePaymentComplete}
         auctionId={id} 
+      />
+
+      {/* Auction Payment Modal (winner payment) */}
+      <AuctionPaymentModal
+        visible={showAuctionPaymentModal}
+        onClose={() => setShowAuctionPaymentModal(false)}
+        onPaymentComplete={handleAuctionPaymentComplete}
+        auctionId={id}
+        amount={highestBid}
       />
     </ThemedView>
   );
@@ -1024,6 +1590,107 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  paymentSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ffeeba',
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  paymentTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#856404',
+  },
+  deadlineContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 10,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#ffeeba',
+  },
+  deadlineTextContainer: {
+    flex: 1,
+  },
+  deadlineLabel: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '500',
+  },
+  deadlineTimer: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#856404',
+  },
+  deadlineBadge: {
+    backgroundColor: '#856404',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+  deadlineBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  paymentButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  paymentButtonGradient: {
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  paymentButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  winnerSection: {
+    marginBottom: 20,
+  },
+  paidContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 15,
+  },
+  paidGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  paidContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  paidTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  paidSubtitle: {
+    color: '#fff',
+    fontSize: 13,
+    opacity: 0.9,
+  },
   highestBidSection: {
     marginBottom: 20,
     padding: 15,
@@ -1092,6 +1759,23 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
+    flex: 1,
+  },
+  addReviewButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  addReviewGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  addReviewText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   bidderItem: {
     flexDirection: 'row',
@@ -1139,6 +1823,88 @@ const styles = StyleSheet.create({
   highestBidAmount: {
     color: '#fbbf24',
     fontWeight: 'bold',
+  },
+  reviewsSection: {
+    marginBottom: 20,
+  },
+  reviewItem: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reviewerAvatarContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: Colors.primary + '30',
+  },
+  reviewerAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  reviewerAvatarGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewerAvatarText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  reviewerInfo: {
+    flex: 1,
+  },
+  reviewerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewerName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  reviewText: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginLeft: 48,
+  },
+  noReviewsText: {
+    fontSize: 14,
+    opacity: 0.7,
+    textAlign: 'center',
+  },
+  noReviewsSubtext: {
+    fontSize: 12,
+    opacity: 0.5,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  emptyReviewsContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  viewAllReviews: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 4,
+  },
+  viewAllReviewsText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
   },
   expirationContainer: {
     flexDirection: 'row',
@@ -1253,6 +2019,9 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 400,
   },
+  reviewsModalContent: {
+    maxHeight: '80%',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1306,9 +2075,19 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
+  reviewTextInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    padding: 15,
+    fontSize: 16,
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
+    marginTop: 10,
   },
   modalButton: {
     flex: 1,
@@ -1331,5 +2110,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  deleteReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    gap: 8,
+  },
+  deleteReviewText: {
+    fontSize: 14,
+    color: Colors.warning,
+    fontWeight: '600',
+  },
+  reviewsList: {
+    paddingBottom: 20,
   },
 });

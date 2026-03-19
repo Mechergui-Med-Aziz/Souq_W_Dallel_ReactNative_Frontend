@@ -1,9 +1,5 @@
-// metro.config.js
-const { getDefaultConfig } = require('expo/metro-config');
+const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
-
-// Add custom configuration for web
-config.resolver.sourceExts = [...config.resolver.sourceExts, 'mjs'];
 
 module.exports = config;

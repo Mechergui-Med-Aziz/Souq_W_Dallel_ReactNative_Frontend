@@ -7,16 +7,18 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.sd"
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -24,22 +26,18 @@
       },
       "package": "com.yourcompany.sd"
     },
+
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
+
     "plugins": [
       "expo-router",
       "@react-native-community/datetimepicker",
-      "expo-notifications",
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.yourcompany.sd",
-          "enableGooglePay": true
-        }
-      ]
+      "expo-notifications"
     ],
+
     "extra": {
       "router": {
         "origin": false

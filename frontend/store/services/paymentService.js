@@ -1,14 +1,10 @@
 import axiosInstance from '../../lib/axios';
-import { API_ENDPOINTS } from '../../constants/api';
+import { API_ENDPOINTS, API_BASE_URL } from '../../constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PAYMENT_STORAGE_KEY = 'auctionPayments';
 
 export const paymentService = {
-  /**
-   * Create Stripe payment intent for 1 DT
-   * @returns {Promise<Object>} Payment intent with clientSecret
-   */
   createPaymentIntent: async () => {
     try {
       console.log('Calling payment endpoint:', API_ENDPOINTS.CREATE_PAYMENT_INTENT);
@@ -26,18 +22,34 @@ export const paymentService = {
     }
   },
 
-  /**
-   * Check if user has already paid for a specific auction
-   * @param {string} userId - User ID
-   * @param {string} auctionId - Auction ID
-   * @returns {Promise<boolean>}
-   */
+  // Pay for won auction
+  payAuction: async (auctionId, amount) => {
+    try {
+      console.log(`Paying auction ${auctionId} with amount ${amount}`);
+      console.log('Full URL:', `${API_BASE_URL}${API_ENDPOINTS.PAY_AUCTION(auctionId, amount)}`);
+      
+      const response = await axiosInstance.post(
+        API_ENDPOINTS.PAY_AUCTION(auctionId, amount)
+      );
+      
+      console.log('Pay auction response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Auction payment error:', error);
+      if (error.response) {
+        console.error('Error status:', error.response.status);
+        console.error('Error data:', error.response.data);
+        throw new Error(error.response.data?.error || error.response.data?.message || 'Erreur de paiement');
+      }
+      throw new Error(error.message || 'Erreur de paiement');
+    }
+  },
+
   hasPaidForAuction: async (userId, auctionId) => {
     try {
       const paymentsData = await AsyncStorage.getItem(PAYMENT_STORAGE_KEY);
       const payments = paymentsData ? JSON.parse(paymentsData) : {};
       
-      // Get user's payments
       const userPayments = payments[userId] || [];
       return userPayments.includes(auctionId);
     } catch (error) {
@@ -46,21 +58,13 @@ export const paymentService = {
     }
   },
 
-  /**
-   * Mark user as having paid for a specific auction
-   * @param {string} userId - User ID
-   * @param {string} auctionId - Auction ID
-   * @returns {Promise<boolean>}
-   */
   markAsPaidForAuction: async (userId, auctionId) => {
     try {
       const paymentsData = await AsyncStorage.getItem(PAYMENT_STORAGE_KEY);
       const payments = paymentsData ? JSON.parse(paymentsData) : {};
       
-      // Get user's payments or initialize empty array
       const userPayments = payments[userId] || [];
       
-      // Add auctionId if not already present
       if (!userPayments.includes(auctionId)) {
         userPayments.push(auctionId);
         payments[userId] = userPayments;
@@ -74,9 +78,6 @@ export const paymentService = {
     }
   },
 
-  /**
-   * Clear all payment records (for testing)
-   */
   clearAllPayments: async () => {
     try {
       await AsyncStorage.removeItem(PAYMENT_STORAGE_KEY);

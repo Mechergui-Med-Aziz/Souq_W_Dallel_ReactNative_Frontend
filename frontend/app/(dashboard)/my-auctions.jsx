@@ -1,4 +1,3 @@
-// app/(dashboard)/my-auctions.jsx - FINAL VERSION
 import { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
@@ -14,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
-import ThemedCard from '../../components/ThemedCard';
 import AuctionCard from '../../components/AuctionCard';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppDispatch, useAppSelector } from '../../hooks/useAppDispatch';
@@ -38,6 +36,8 @@ const MyAuctions = () => {
   const [wonAuctions, setWonAuctions] = useState([]);
   const [lostAuctions, setLostAuctions] = useState([]);
   const [activeAuctions, setActiveAuctions] = useState([]);
+  const [pendingAuctions, setPendingAuctions] = useState([]);
+  const [deniedAuctions, setDeniedAuctions] = useState([]);
   const [endedAuctions, setEndedAuctions] = useState([]);
   const [filteredAuctions, setFilteredAuctions] = useState([]);
 
@@ -53,7 +53,7 @@ const MyAuctions = () => {
 
   useEffect(() => {
     filterAuctions();
-  }, [selectedFilter, createdAuctions, participatedAuctions, wonAuctions, lostAuctions, activeAuctions, endedAuctions]);
+  }, [selectedFilter, createdAuctions, participatedAuctions, wonAuctions, lostAuctions, activeAuctions, pendingAuctions, deniedAuctions, endedAuctions]);
 
   const loadAllAuctions = async () => {
     try {
@@ -120,13 +120,25 @@ const MyAuctions = () => {
     });
     setLostAuctions(lost);
 
-    // Active auctions (not expired) - Only show user's active auctions
+    // Active auctions (approved and not expired)
     const active = created.filter(auction => 
       auction.status === 'active' && new Date(auction.expireDate) > now
     );
     setActiveAuctions(active);
 
-    // Ended auctions - Only show user's created auctions that ended
+    // NEW: Pending auctions (awaiting admin approval)
+    const pending = created.filter(auction => 
+      auction.status === 'pending'
+    );
+    setPendingAuctions(pending);
+
+    // NEW: Denied auctions (rejected by admin)
+    const denied = created.filter(auction => 
+      auction.status === 'denied'
+    );
+    setDeniedAuctions(denied);
+
+    // Ended auctions - User's created auctions that ended
     const ended = created.filter(auction => 
       auction.status === 'ended' || new Date(auction.expireDate) <= now
     );
@@ -137,6 +149,8 @@ const MyAuctions = () => {
     console.log('Won:', won.length);
     console.log('Lost:', lost.length);
     console.log('Active (user):', active.length);
+    console.log('Pending (user):', pending.length);
+    console.log('Denied (user):', denied.length);
     console.log('Ended (user):', ended.length);
   };
 
@@ -156,6 +170,12 @@ const MyAuctions = () => {
         break;
       case 'active':
         setFilteredAuctions(activeAuctions);
+        break;
+      case 'pending': // NEW
+        setFilteredAuctions(pendingAuctions);
+        break;
+      case 'denied': // NEW
+        setFilteredAuctions(deniedAuctions);
         break;
       case 'ended':
         setFilteredAuctions(endedAuctions);
@@ -177,6 +197,8 @@ const MyAuctions = () => {
     won: wonAuctions.length,
     lost: lostAuctions.length,
     active: activeAuctions.length,
+    pending: pendingAuctions.length, // NEW
+    denied: deniedAuctions.length, // NEW
     ended: endedAuctions.length
   });
 
@@ -185,8 +207,8 @@ const MyAuctions = () => {
   const handleAuctionPress = (auctionId) => {
     console.log('Auction pressed:', auctionId, 'Filter:', selectedFilter);
     
-    // Navigate to edit page for created and active auctions
-    if (selectedFilter === 'created' || selectedFilter === 'active') {
+    // Navigate to edit page for created, active, pending, denied auctions (ones you can edit)
+    if (selectedFilter === 'created' || selectedFilter === 'active' || selectedFilter === 'pending' || selectedFilter === 'denied') {
       router.push(`/edit-auction/${auctionId}`);
     } 
     // Navigate to details page for participated, won, lost, and ended auctions
@@ -258,7 +280,7 @@ const MyAuctions = () => {
         </View>
       </View>
 
-      {/* Filter Chips */}
+      {/* Filter Chips - Added pending and denied */}
       <View style={styles.filtersWrapper}>
         <ScrollView 
           horizontal 
@@ -268,6 +290,8 @@ const MyAuctions = () => {
         >
           <FilterChip id="created" label="Créées" count={stats.created} icon="create-outline" />
           <FilterChip id="active" label="Actives" count={stats.active} icon="play-circle-outline" />
+          <FilterChip id="pending" label="En attente" count={stats.pending} icon="time-outline" />
+          <FilterChip id="denied" label="Refusées" count={stats.denied} icon="close-circle-outline" />
           <FilterChip id="participated" label="Participées" count={stats.participated} icon="people-outline" />
           <FilterChip id="won" label="Gagnées" count={stats.won} icon="trophy-outline" />
           <FilterChip id="lost" label="Perdues" count={stats.lost} icon="close-circle-outline" />
@@ -279,7 +303,7 @@ const MyAuctions = () => {
       <View style={styles.infoContainer}>
         <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
         <ThemedText style={styles.infoText}>
-          {selectedFilter === 'created' || selectedFilter === 'active' 
+          {selectedFilter === 'created' || selectedFilter === 'active' || selectedFilter === 'pending' || selectedFilter === 'denied'
             ? 'Cliquez pour modifier vos enchères' 
             : 'Cliquez pour voir les détails des enchères'}
         </ThemedText>
