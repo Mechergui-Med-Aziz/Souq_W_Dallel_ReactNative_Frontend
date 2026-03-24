@@ -53,6 +53,42 @@ export const deleteUserPhoto = createAsyncThunk(
   }
 );
 
+export const makeTransporter = createAsyncThunk(
+  'user/makeTransporter',
+  async (userId, { rejectWithValue }) => {
+    try {
+      const user = await userService.makeTransporter(userId);
+      return user;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const removeTransporter = createAsyncThunk(
+  'user/removeTransporter',
+  async (userId, { rejectWithValue }) => {
+    try {
+      const user = await userService.removeTransporter(userId);
+      return user;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const fetchAllTransporters = createAsyncThunk(
+  'user/fetchAllTransporters',
+  async (_, { rejectWithValue }) => {
+    try {
+      const transporters = await userService.getAllTransporters();
+      return transporters;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 const userSlice = createSlice({
   name: 'user',
   initialState: {
@@ -120,6 +156,15 @@ const userSlice = createSlice({
       })
       .addCase(deleteUserPhoto.rejected, (state) => {
         state.photoLoading = false;
+      })
+      .addCase(makeTransporter.fulfilled, (state, action) => {
+        // Update user in list if needed
+      })
+      .addCase(removeTransporter.fulfilled, (state, action) => {
+        // Update user in list if needed
+      })
+      .addCase(fetchAllTransporters.fulfilled, (state, action) => {
+        state.transporters = action.payload;
       });
   },
 });

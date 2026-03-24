@@ -144,6 +144,20 @@ export const auctionService = {
     return response.data;
   },
 
+  updateReview: async (auctionId, reviewerId, oldReview, newReview) => {
+    const response = await axiosInstance.put(
+      API_ENDPOINTS.UPDATE_REVIEW(auctionId, reviewerId, oldReview, newReview)
+    );
+    return response.data;
+  },
+
+  deleteReview: async (auctionId, reviewerId, review) => {
+    const response = await axiosInstance.put(
+      API_ENDPOINTS.DELETE_REVIEW(auctionId, reviewerId, review, '')
+    );
+    return response.data;
+  },
+
   getReviews: async (auctionId) => {
     const response = await axiosInstance.get(API_ENDPOINTS.GET_REVIEWS(auctionId));
     return response.data;

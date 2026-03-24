@@ -85,6 +85,30 @@ export const denyAuction = createAsyncThunk(
   }
 );
 
+export const updateReview = createAsyncThunk(
+  'auction/updateReview',
+  async ({ auctionId, reviewerId, oldReview, newReview }, { rejectWithValue }) => {
+    try {
+      const result = await auctionService.updateReview(auctionId, reviewerId, oldReview, newReview);
+      return { auctionId, reviewerId, oldReview, newReview, result };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const deleteReview = createAsyncThunk(
+  'auction/deleteReview',
+  async ({ auctionId, reviewerId, review }, { rejectWithValue }) => {
+    try {
+      const result = await auctionService.deleteReview(auctionId, reviewerId, review);
+      return { auctionId, reviewerId, review, result };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 export const addReview = createAsyncThunk(
   'auction/addReview',
   async ({ auctionId, reviewerId, review }, { rejectWithValue }) => {
@@ -376,6 +400,13 @@ const auctionSlice = createSlice({
       .addCase(addReview.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+
+      .addCase(updateReview.fulfilled, (state, action) => {
+        state.loading = false;
+      })
+      .addCase(deleteReview.fulfilled, (state, action) => {
+        state.loading = false;
       })
       
       .addCase(fetchReviews.fulfilled, (state, action) => {

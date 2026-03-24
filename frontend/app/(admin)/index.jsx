@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   View, 
+  TextInput,
   ScrollView, 
   TouchableOpacity, 
   RefreshControl,
@@ -9,12 +10,13 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Image
+  Image,
+  Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
-import { BarChart, PieChart } from 'react-native-chart-kit';
+import { BarChart, PieChart, LineChart } from 'react-native-chart-kit';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ThemedView from '../../components/ThemedView';
 import ThemedText from '../../components/ThemedText';
@@ -26,12 +28,24 @@ import {
   approveAuction, 
   denyAuction 
 } from '../../store/slices/auctionSlice';
+import { 
+  fetchAllParcels,
+  fetchParcelsByAdmin, 
+  updateParcel, 
+  deliverParcel 
+} from '../../store/slices/parcelSlice';
+import { 
+  fetchNotifications, 
+  markAsRead, 
+  markMultipleAsRead 
+} from '../../store/slices/notificationSlice';
+import { fetchAllDeposits } from '../../store/slices/depositSlice';
 import { userService } from '../../store/services/userService';
 import { auctionService } from '../../store/services/auctionService';
-import { depositService } from '../../store/services/depositService';
 import { Colors } from '../../constants/Colors';
 
 const { width: screenWidth } = Dimensions.get('window');
+const isLargeScreen = screenWidth >= 768;
 
 const AdminDashboard = () => {
   const router = useRouter();
@@ -40,17 +54,29 @@ const AdminDashboard = () => {
   const { user } = useAuth();
   const dispatch = useAppDispatch();
   const { auctions, loading } = useAppSelector((state) => state.auction);
+  const { adminParcels } = useAppSelector((state) => state.parcel);
+  const { deposits } = useAppSelector((state) => state.deposit);
+  const { notifications } = useAppSelector((state) => state.notifications);
+  
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(isLargeScreen);
+  const [activeMenu, setActiveMenu] = useState('dashboard');
   
   // Data state
   const [users, setUsers] = useState([]);
-  const [deposits, setDeposits] = useState([]);
+  const [transporters, setTransporters] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [sellerNames, setSellerNames] = useState({});
+  const [userNames, setUserNames] = useState({});
   
   // Modal state
   const [selectedAuction, setSelectedAuction] = useState(null);
   const [auctionPhotos, setAuctionPhotos] = useState([]);
   const [auctionModalVisible, setAuctionModalVisible] = useState(false);
+  const [blockModalVisible, setBlockModalVisible] = useState(false);
+  const [selectedUserForBlock, setSelectedUserForBlock] = useState(null);
+  const [blockDays, setBlockDays] = useState('7');
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [selectedParcelForAssign, setSelectedParcelForAssign] = useState(null);
   
   // Filter state
   const [dateFilter, setDateFilter] = useState('week');
@@ -61,35 +87,103 @@ const AdminDashboard = () => {
   const [filteredDeposits, setFilteredDeposits] = useState([]);
   
   // UI state
-  const [activeTab, setActiveTab] = useState('overview');
   const [auctionFilter, setAuctionFilter] = useState('all');
+  const [parcelFilter, setParcelFilter] = useState('all');
   const [processingUserId, setProcessingUserId] = useState(null);
   const [processingAuctionId, setProcessingAuctionId] = useState(null);
+  const [processingParcelId, setProcessingParcelId] = useState(null);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const [unblockLoading, setUnblockLoading] = useState(false);
+  const [allParcels, setAllParcels] = useState([]);
+  const [adminParcelsList, setAdminParcels] = useState([]);
+  const [pickUpAdress, setPickUpAdress] = useState('');
+  const [destinationAdress, setDestinationAdress] = useState('');
+  const [selectedAuctionForDeposits, setSelectedAuctionForDeposits] = useState(null);
+  const [auctionNames, setAuctionNames] = useState({});
+  
+  // Admin notifications state
+  const [adminNotifications, setAdminNotifications] = useState([]);
+  const [notificationSelectionMode, setNotificationSelectionMode] = useState(false);
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState([]);
   
   // Stats
+  const [auctionCounts, setAuctionCounts] = useState({
+    active: 0,
+    pending: 0,
+    denied: 0,
+    ended: 0
+  });
+
+  const [depositStats, setDepositStats] = useState({
+    total: 0,
+    auction: 0,
+    bids: 0
+  });
+  
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalAuctions: 0,
     totalDeposits: 0,
-    totalNotifications: 0,
     activeAuctions: 0,
     endedAuctions: 0,
     pendingAuctions: 0,
     deniedAuctions: 0,
-    totalBids: 0,
-    auctionDeposits: 0,
-    bidDeposits: 0
-  });
-
-  // Chart data
-  const [depositChartData, setDepositChartData] = useState({
-    labels: ['Aucune donnée'],
-    datasets: [{ data: [0] }]
+    totalParcels: 0,
+    pendingParcels: 0,
+    deliveredParcels: 0
   });
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (activeMenu === 'parcels') {
+      loadParcels();
+    }
+  }, [activeMenu]);
+
+  useEffect(() => {
+    const loadAuctionNames = async () => {
+      const names = {};
+      for (const deposit of deposits) {
+        if (deposit.auctionId && !names[deposit.auctionId]) {
+          const auction = auctions.find(a => a.id === deposit.auctionId);
+          if (auction) {
+            names[deposit.auctionId] = auction.title;
+          } else {
+            try {
+              const auctionData = await auctionService.getAuctionById(deposit.auctionId);
+              names[deposit.auctionId] = auctionData.title;
+            } catch (error) {
+              names[deposit.auctionId] = `ID: ${deposit.auctionId.substring(0, 8)}...`;
+            }
+          }
+        }
+      }
+      setAuctionNames(names);
+    };
+    
+    if (deposits.length > 0) {
+      loadAuctionNames();
+    }
+  }, [deposits, auctions]);
+
+  useEffect(() => {
+    if (deposits.length > 0) {
+      const auctionTotal = deposits
+        .filter(d => d.type === 'AUCTION')
+        .reduce((sum, d) => sum + (d.amount || 0), 0);
+      const bidsTotal = deposits
+        .filter(d => d.type === 'BIDS')
+        .reduce((sum, d) => sum + (d.amount || 0), 0);
+      setDepositStats({
+        total: stats.totalDeposits,
+        auction: auctionTotal,
+        bids: bidsTotal
+      });
+    }
+  }, [deposits, stats.totalDeposits]);
 
   useEffect(() => {
     if (deposits.length > 0) {
@@ -98,52 +192,79 @@ const AdminDashboard = () => {
   }, [deposits, dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
+    loadUserNames();
+  }, [auctions, adminParcels, users]);
+
+  const loadUserNames = async () => {
+    const nameMap = {};
+    
     // Load seller names for auctions
-    const loadSellerNames = async () => {
-      const names = {};
-      for (const auction of auctions) {
-        if (auction.sellerId && !names[auction.sellerId]) {
-          try {
-            const seller = await userService.getUserById(auction.sellerId);
-            names[auction.sellerId] = seller ? 
-              `${seller.firstname || ''} ${seller.lastname || ''}`.trim() || seller.email : 
-              'Inconnu';
-          } catch (error) {
-            names[auction.sellerId] = 'Inconnu';
-          }
+    for (const auction of auctions) {
+      if (auction.sellerId && !nameMap[auction.sellerId]) {
+        try {
+          const seller = await userService.getUserById(auction.sellerId);
+          nameMap[auction.sellerId] = seller ? 
+            `${seller.firstname || ''} ${seller.lastname || ''}`.trim() || seller.email : 
+            `ID: ${auction.sellerId.substring(0, 8)}...`;
+        } catch (error) {
+          nameMap[auction.sellerId] = `ID: ${auction.sellerId.substring(0, 8)}...`;
         }
       }
-      setSellerNames(names);
-    };
-    
-    if (auctions.length > 0) {
-      loadSellerNames();
     }
-  }, [auctions]);
+    
+    // Load buyer names for parcels
+    for (const parcel of adminParcels) {
+      if (parcel.buyerId && !nameMap[parcel.buyerId]) {
+        try {
+          const buyer = await userService.getUserById(parcel.buyerId);
+          nameMap[parcel.buyerId] = buyer ? 
+            `${buyer.firstname || ''} ${buyer.lastname || ''}`.trim() || buyer.email : 
+            `ID: ${parcel.buyerId.substring(0, 8)}...`;
+        } catch (error) {
+          nameMap[parcel.buyerId] = `ID: ${parcel.buyerId.substring(0, 8)}...`;
+        }
+      }
+      
+      if (parcel.transporterId && !nameMap[parcel.transporterId]) {
+        try {
+          const transporter = await userService.getUserById(parcel.transporterId);
+          nameMap[parcel.transporterId] = transporter ? 
+            `${transporter.firstname || ''} ${transporter.lastname || ''}`.trim() || transporter.email : 
+            `ID: ${parcel.transporterId.substring(0, 8)}...`;
+        } catch (error) {
+          nameMap[parcel.transporterId] = `ID: ${parcel.transporterId.substring(0, 8)}...`;
+        }
+      }
+    }
+    
+    setUserNames(nameMap);
+  };
 
   const loadDashboardData = async () => {
     try {
-      // Load auctions
       await dispatch(fetchAllAuctions()).unwrap();
+      await dispatch(fetchAllDeposits()).unwrap(); 
       
-      // Load users
       const usersData = await userService.getAllUsers();
       setUsers(usersData);
       
-      // Load deposits - with better error handling
-      let depositsData = [];
-      try {
-        depositsData = await depositService.getAllDeposits();
-        console.log('Deposits loaded:', depositsData.length);
-      } catch (depositError) {
-        console.error('Failed to load deposits:', depositError);
-        depositsData = []; // Set to empty array on error
+      const transportersData = await userService.getAllTransporters();
+      setTransporters(transportersData);
+      
+      // Load parcels for admin
+      await loadParcels();
+      
+      // Load admin notifications
+      if (user?.id) {
+        const result = await dispatch(fetchNotifications(user.id)).unwrap();
+        const filtered = result.filter(notif => 
+          notif.type === 'AUCTION_PENDING' || 
+          notif.type === 'PARCEL_INVALID'
+        );
+        setAdminNotifications(filtered);
       }
       
-      setDeposits(depositsData);
-      setFilteredDeposits(depositsData);
-      
-      calculateStats(usersData, auctions, depositsData);
+      calculateStats(usersData, auctions, deposits, adminParcels);
       
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -151,13 +272,78 @@ const AdminDashboard = () => {
     }
   };
 
+  const loadParcels = async () => {
+    try {
+      // Fetch all parcels
+      const result = await dispatch(fetchAllParcels()).unwrap();
+      setAllParcels(result || []);
+      
+      const filteredParcels = (result || []).filter(p => {
+        // If parcel has no adminId, show it (legacy parcels)
+        if (!p.adminId) {
+          console.log('Showing legacy parcel without adminId:', p.id);
+          return true;
+        }
+        // If parcel has adminId, only show if it matches current admin
+        return p.adminId === user?.id;
+      });
+      
+      setAdminParcels(filteredParcels);
+      
+      // Update stats with filtered parcels
+      calculateStats(users, auctions, deposits, filteredParcels);
+      
+      console.log('All parcels:', result);
+      console.log('Filtered parcels for admin:', filteredParcels);
+      console.log('Current admin ID:', user?.id);
+      
+    } catch (error) {
+      console.error('Error loading parcels:', error);
+    }
+  };
+
+  const renderDepositFilters = () => (
+    <View style={styles.filterSection}>
+      <ThemedText style={styles.filterTitle}>Filtrer par enchère:</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <TouchableOpacity
+          style={[
+            styles.filterChip,
+            !selectedAuctionForDeposits && styles.filterChipActive
+          ]}
+          onPress={() => setSelectedAuctionForDeposits(null)}
+        >
+          <ThemedText style={[
+            styles.filterChipText,
+            !selectedAuctionForDeposits && styles.filterChipTextActive
+          ]}>
+            Toutes
+          </ThemedText>
+        </TouchableOpacity>
+        {Object.entries(auctionNames).map(([auctionId, name]) => (
+          <TouchableOpacity
+            key={auctionId}
+            style={[
+              styles.filterChip,
+              selectedAuctionForDeposits === auctionId && styles.filterChipActive
+            ]}
+            onPress={() => setSelectedAuctionForDeposits(auctionId)}
+          >
+            <ThemedText style={[
+              styles.filterChipText,
+              selectedAuctionForDeposits === auctionId && styles.filterChipTextActive
+            ]}>
+              {name.length > 20 ? name.substring(0, 20) + '...' : name}
+            </ThemedText>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
   const filterDepositsByDate = () => {
     if (!deposits.length) {
       setFilteredDeposits([]);
-      setDepositChartData({
-        labels: ['Aucune donnée'],
-        datasets: [{ data: [0] }]
-      });
       return;
     }
 
@@ -195,47 +381,15 @@ const AdminDashboard = () => {
 
     const filtered = deposits.filter(deposit => {
       const depositDate = new Date(deposit.createdAt || Date.now());
-      return depositDate >= startDate && depositDate <= endDate;
+      const matchesDate = depositDate >= startDate && depositDate <= endDate;
+      const matchesAuction = !selectedAuctionForDeposits || deposit.auctionId === selectedAuctionForDeposits;
+      return matchesDate && matchesAuction;
     });
 
     setFilteredDeposits(filtered);
-    updateDepositChartData(filtered);
   };
 
-  const updateDepositChartData = (filteredDeposits) => {
-    if (!filteredDeposits.length) {
-      setDepositChartData({
-        labels: ['Aucune donnée'],
-        datasets: [{ data: [0] }]
-      });
-      return;
-    }
-
-    // Group by date
-    const groupedByDate = {};
-    filteredDeposits.forEach(deposit => {
-      const date = new Date(deposit.createdAt || Date.now()).toLocaleDateString();
-      if (!groupedByDate[date]) {
-        groupedByDate[date] = 0;
-      }
-      groupedByDate[date] += deposit.amount || 0;
-    });
-
-    const sortedDates = Object.keys(groupedByDate).sort((a, b) => 
-      new Date(a) - new Date(b)
-    );
-
-    // Take last 7 days or all if less
-    const labels = sortedDates.length > 7 ? sortedDates.slice(-7) : sortedDates;
-    const data = labels.map(date => groupedByDate[date] || 0);
-
-    setDepositChartData({
-      labels,
-      datasets: [{ data }]
-    });
-  };
-
-  const calculateStats = (usersData, auctionsData, depositsData) => {
+  const calculateStats = (usersData, auctionsData, depositsData, parcelsData) => {
     const now = new Date();
     
     const activeAuctions = auctionsData.filter(a => 
@@ -254,44 +408,49 @@ const AdminDashboard = () => {
       a.status === 'denied'
     ).length;
     
-    const totalBids = auctionsData.reduce((sum, auction) => 
-      sum + (auction.bidders ? Object.keys(auction.bidders).length : 0), 0
-    );
+    setAuctionCounts({
+      active: activeAuctions,
+      pending: pendingAuctions,
+      denied: deniedAuctions,
+      ended: endedAuctions
+    });
     
-    const auctionDepositsTotal = depositsData
-      .filter(d => d.type === 'auction')
-      .reduce((sum, d) => sum + (d.amount || 0), 0);
+    // Fix parcels counts - ensure parcelsData is an array
+    const parcelsArray = parcelsData || [];
+    const pendingParcels = parcelsArray.filter(p => !p.delivred).length;
+    const deliveredParcels = parcelsArray.filter(p => p.delivred).length;
     
-    const bidDepositsTotal = depositsData
-      .filter(d => d.type === 'bids')
-      .reduce((sum, d) => sum + (d.amount || 0), 0);
-    
-    const totalDepositAmount = auctionDepositsTotal + bidDepositsTotal;
+    const totalDepositAmount = depositsData.reduce((sum, d) => sum + (d.amount || 0), 0);
     
     setStats({
       totalUsers: usersData.length,
       totalAuctions: auctionsData.length,
       totalDeposits: totalDepositAmount,
-      totalNotifications: 0,
       activeAuctions,
       endedAuctions,
       pendingAuctions,
       deniedAuctions,
-      totalBids,
-      auctionDeposits: auctionDepositsTotal,
-      bidDeposits: bidDepositsTotal
+      totalParcels: parcelsArray.length,
+      pendingParcels,
+      deliveredParcels
     });
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadDashboardData();
+    if (activeMenu === 'parcels') {
+      await loadParcels();
+    }
     setRefreshing(false);
+  };
+
+  const getUserName = (userId) => {
+    return userNames[userId] || `ID: ${userId?.substring(0, 8)}...`;
   };
 
   const handleAuctionPress = async (auction) => {
     try {
-      // Load auction photos
       const photos = [];
       if (auction.photoId && auction.photoId.length > 0) {
         for (const photoId of auction.photoId) {
@@ -321,7 +480,7 @@ const AdminDashboard = () => {
               setProcessingAuctionId(auctionId);
               await dispatch(approveAuction({ auctionId, adminId: user.id })).unwrap();
               Alert.alert('Succès', 'Enchère approuvée avec succès');
-              await loadDashboardData(); // Refresh data
+              await loadDashboardData();
             } catch (error) {
               Alert.alert('Erreur', 'Échec de l\'approbation');
             } finally {
@@ -347,7 +506,7 @@ const AdminDashboard = () => {
               setProcessingAuctionId(auctionId);
               await dispatch(denyAuction({ auctionId, adminId: user.id })).unwrap();
               Alert.alert('Succès', 'Enchère refusée');
-              await loadDashboardData(); // Refresh data
+              await loadDashboardData();
             } catch (error) {
               Alert.alert('Erreur', 'Échec du refus');
             } finally {
@@ -359,22 +518,109 @@ const AdminDashboard = () => {
     );
   };
 
-  const handleBlockUser = async (userId, currentStatus) => {
-    try {
-      setProcessingUserId(userId);
-      if (currentStatus === 'Blocked') {
-        await userService.unblockUser(userId);
-        Alert.alert('Succès', 'Utilisateur débloqué avec succès');
-      } else {
-        await userService.blockUser(userId);
-        Alert.alert('Succès', 'Utilisateur bloqué avec succès');
+  const handleNotificationPress = async (notification) => {
+    if (notificationSelectionMode) {
+      toggleNotificationSelection(notification.id);
+    } else {
+      try {
+        await dispatch(markAsRead(notification.id)).unwrap();
+        const updated = adminNotifications.map(n => 
+          n.id === notification.id ? { ...n, read: true } : n
+        );
+        setAdminNotifications(updated);
+        
+        if (notification.type === 'AUCTION_PENDING' && notification.auctionId) {
+          setActiveMenu('auctions');
+          setAuctionFilter('pending');
+          const auction = auctions.find(a => a.id === notification.auctionId);
+          if (auction) {
+            handleAuctionPress(auction);
+          }
+        } else if (notification.type === 'PARCEL_INVALID' && notification.auctionId) {
+          setActiveMenu('parcels');
+          setParcelFilter('all');
+        }
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
       }
-      // Refresh user list
+    }
+  };
+
+  const handleLongPressNotification = (id) => {
+    setNotificationSelectionMode(true);
+    setSelectedNotificationIds([id]);
+  };
+
+  const toggleNotificationSelection = (id) => {
+    setSelectedNotificationIds(prev =>
+      prev.includes(id)
+        ? prev.filter(item => item !== id)
+        : [...prev, id]
+    );
+  };
+
+  const handleMarkSelectedAsRead = async () => {
+    if (selectedNotificationIds.length === 0) return;
+    
+    try {
+      await dispatch(markMultipleAsRead(selectedNotificationIds)).unwrap();
+      const updated = adminNotifications.map(n => 
+        selectedNotificationIds.includes(n.id) ? { ...n, read: true } : n
+      );
+      setAdminNotifications(updated);
+      setSelectedNotificationIds([]);
+      setNotificationSelectionMode(false);
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de marquer les notifications comme lues');
+    }
+  };
+
+  const handleSelectAllNotifications = () => {
+    if (selectedNotificationIds.length === adminNotifications.length) {
+      setSelectedNotificationIds([]);
+    } else {
+      setSelectedNotificationIds(adminNotifications.map(n => n.id));
+    }
+  };
+
+  const handleBlockUser = (userId) => {
+    setSelectedUserForBlock(userId);
+    setBlockDays('7');
+    setBlockModalVisible(true);
+  };
+
+  const confirmBlockUser = async () => {
+    if (!selectedUserForBlock) return;
+    
+    setBlockLoading(true);
+    try {
+      await userService.blockUserWithDays(selectedUserForBlock, parseInt(blockDays));
+      Alert.alert('Succès', `Utilisateur bloqué pour ${blockDays} jours`);
+      const updatedUsers = await userService.getAllUsers();
+      setUsers(updatedUsers);
+      setBlockModalVisible(false);
+      setSelectedUserForBlock(null);
+    } catch (error) {
+      console.error('Error blocking user:', error);
+      Alert.alert('Erreur', 'Échec du blocage. Veuillez réessayer.');
+    } finally {
+      setBlockLoading(false);
+    }
+  };
+
+  const handleUnblockUser = async (userId) => {
+    setUnblockLoading(true);
+    setProcessingUserId(userId);
+    try {
+      await userService.unblockUser(userId);
+      Alert.alert('Succès', 'Utilisateur débloqué avec succès');
       const updatedUsers = await userService.getAllUsers();
       setUsers(updatedUsers);
     } catch (error) {
-      Alert.alert('Erreur', 'Échec de l\'opération');
+      console.error('Error unblocking user:', error);
+      Alert.alert('Erreur', 'Échec du déblocage. Veuillez réessayer.');
     } finally {
+      setUnblockLoading(false);
       setProcessingUserId(null);
     }
   };
@@ -385,12 +631,17 @@ const AdminDashboard = () => {
       if (currentRole === 'ADMIN') {
         await userService.makeUser(userId);
         Alert.alert('Succès', 'Utilisateur rétrogradé en utilisateur standard');
+      } else if (currentRole === 'Transporter') {
+        await userService.makeUser(userId);
+        Alert.alert('Succès', 'Utilisateur rétrogradé en utilisateur standard');
       } else {
         await userService.makeAdmin(userId);
         Alert.alert('Succès', 'Utilisateur promu administrateur');
       }
       const updatedUsers = await userService.getAllUsers();
       setUsers(updatedUsers);
+      const updatedTransporters = await userService.getAllTransporters();
+      setTransporters(updatedTransporters);
     } catch (error) {
       Alert.alert('Erreur', 'Échec de la modification du rôle');
     } finally {
@@ -398,12 +649,173 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleMakeTransporter = async (userId) => {
+    try {
+      setProcessingUserId(userId);
+      await userService.makeTransporter(userId);
+      Alert.alert('Succès', 'Utilisateur promu transporteur');
+      const updatedUsers = await userService.getAllUsers();
+      setUsers(updatedUsers);
+      const updatedTransporters = await userService.getAllTransporters();
+      setTransporters(updatedTransporters);
+    } catch (error) {
+      Alert.alert('Erreur', 'Échec de la promotion');
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
+  const handleRemoveTransporter = async (userId) => {
+    try {
+      setProcessingUserId(userId);
+      await userService.removeTransporter(userId);
+      Alert.alert('Succès', 'Utilisateur rétrogradé de transporteur');
+      const updatedUsers = await userService.getAllUsers();
+      setUsers(updatedUsers);
+      const updatedTransporters = await userService.getAllTransporters();
+      setTransporters(updatedTransporters);
+    } catch (error) {
+      Alert.alert('Erreur', 'Échec de la rétrogradation');
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
+  const handleAssignTransporter = async (parcelId, transporterId, pickUpAdress, destinationAdress) => {
+    try {
+      setProcessingParcelId(parcelId);
+      
+      const parcelData = {
+        transporterId: transporterId,
+        pickUpAdress: pickUpAdress,           
+        destinationAdress: destinationAdress, 
+        adminId: user.id
+      };
+      
+      console.log('Sending parcel update with data:', JSON.stringify(parcelData, null, 2));
+      
+      const result = await dispatch(updateParcel({ 
+        id: parcelId, 
+        parcelData: parcelData
+      })).unwrap();
+      
+      console.log('Update successful:', result);
+      
+      Alert.alert('Succès', 'Transporteur assigné avec succès');
+      await loadParcels();
+      setAssignModalVisible(false);
+      setPickUpAdress('');
+      setDestinationAdress('');
+      setSelectedParcelForAssign(null);
+    } catch (error) {
+      console.error('Error assigning transporter:', error);
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+      }
+      Alert.alert('Erreur', 'Échec de l\'assignation');
+    } finally {
+      setProcessingParcelId(null);
+    }
+  };
+
+  const handleDeliverParcel = async (parcelId) => {
+    Alert.alert(
+      'Livraison',
+      'Confirmez-vous que ce colis a été livré ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Confirmer',
+          onPress: async () => {
+            try {
+              setProcessingParcelId(parcelId);
+              await dispatch(deliverParcel(parcelId)).unwrap();
+              Alert.alert('Succès', 'Colis marqué comme livré');
+              await loadParcels();
+            } catch (error) {
+              Alert.alert('Erreur', 'Échec de la mise à jour');
+            } finally {
+              setProcessingParcelId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const formatCurrency = (amount) => {
     return `${amount?.toFixed(2) || '0.00'} TND`;
   };
 
-  const getSellerName = (sellerId) => {
-    return sellerNames[sellerId] || 'Chargement...';
+  const toggleSidebar = () => {
+    if (!isLargeScreen) {
+      setSidebarOpen(!sidebarOpen);
+    }
+  };
+
+  const renderSidebar = () => {
+    const unreadCount = adminNotifications.filter(n => !n.read).length;
+    const menuItems = [
+      { id: 'dashboard', label: 'Tableau de bord', icon: 'stats-chart-outline' },
+      { id: 'users', label: 'Utilisateurs', icon: 'people-outline' },
+      { id: 'auctions', label: 'Enchères', icon: 'hammer-outline' },
+      { id: 'parcels', label: 'Colis', icon: 'cube-outline' },
+      { id: 'transporters', label: 'Transporteurs', icon: 'car-outline' },
+      { id: 'notifications', label: 'Notifications', icon: 'notifications-outline' },
+    ];
+
+    if (!sidebarOpen && !isLargeScreen) return null;
+
+    return (
+      <View style={[
+        styles.sidebar,
+        !isLargeScreen && styles.sidebarMobile,
+        !sidebarOpen && !isLargeScreen && styles.sidebarHidden
+      ]}>
+        <View style={styles.sidebarHeader}>
+          <Ionicons name="hammer" size={32} color={Colors.primary} />
+          <ThemedText style={styles.sidebarTitle}>S&D Admin</ThemedText>
+          {!isLargeScreen && (
+            <TouchableOpacity onPress={toggleSidebar} style={styles.closeSidebar}>
+              <Ionicons name="close" size={24} color={theme.text} />
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        <ScrollView style={styles.sidebarMenu}>
+          {menuItems.map(item => (
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.menuItem,
+                activeMenu === item.id && styles.menuItemActive
+              ]}
+              onPress={() => {
+                setActiveMenu(item.id);
+                if (!isLargeScreen) setSidebarOpen(false);
+              }}
+            >
+              <Ionicons 
+                name={item.icon} 
+                size={22} 
+                color={activeMenu === item.id ? Colors.primary : theme.iconColor} 
+              />
+              <ThemedText style={[
+                styles.menuItemText,
+                activeMenu === item.id && styles.menuItemTextActive
+              ]}>
+                {item.label}
+              </ThemedText>
+              {item.id === 'notifications' && unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <ThemedText style={styles.badgeText}>{unreadCount}</ThemedText>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
   };
 
   const renderDateFilter = () => (
@@ -495,98 +907,156 @@ const AdminDashboard = () => {
     </View>
   );
 
-  const renderStatsCards = () => (
-    <View style={styles.statsGrid}>
-      <ThemedCard style={styles.statCard}>
-        <View style={[styles.statIconContainer, { backgroundColor: Colors.primary + '20' }]}>
-          <Ionicons name="people" size={24} color={Colors.primary} />
-        </View>
-        <View style={styles.statInfo}>
-          <ThemedText style={styles.statValue}>{stats.totalUsers}</ThemedText>
-          <ThemedText style={styles.statTitle}>Utilisateurs</ThemedText>
-        </View>
-      </ThemedCard>
+  const getAuctionChartData = () => {
+    const total = auctionCounts.active + auctionCounts.pending + 
+                  auctionCounts.denied + auctionCounts.ended;
+    if (total === 0) return null;
+    
+    return [
+      { name: 'Actives', population: auctionCounts.active, color: '#4ade80' },
+      { name: 'En attente', population: auctionCounts.pending, color: '#fbbf24' },
+      { name: 'Refusées', population: auctionCounts.denied, color: '#ef4444' },
+      { name: 'Terminées', population: auctionCounts.ended, color: '#9ca3af' },
+    ].filter(item => item.population > 0);
+  };
 
-      <ThemedCard style={styles.statCard}>
-        <View style={[styles.statIconContainer, { backgroundColor: '#3b82f6' + '20' }]}>
-          <Ionicons name="hammer" size={24} color="#3b82f6" />
-        </View>
-        <View style={styles.statInfo}>
-          <ThemedText style={styles.statValue}>{stats.totalAuctions}</ThemedText>
-          <ThemedText style={styles.statTitle}>Enchères</ThemedText>
-        </View>
-      </ThemedCard>
-    </View>
-  );
+  const renderDepositChart = () => {
+    const depositByDate = {};
+    filteredDeposits.forEach(deposit => {
+      const date = new Date(deposit.createdAt || Date.now())
+        .toLocaleDateString('fr-FR');
+      if (!depositByDate[date]) depositByDate[date] = 0;
+      depositByDate[date] += deposit.amount || 0;
+    });
 
-  const renderDepositStats = () => (
-    <View style={styles.depositStatsRow}>
-      <ThemedCard style={styles.statCard}>
-        <View style={[styles.statIconContainer, { backgroundColor: '#fbbf24' + '20' }]}>
-          <Ionicons name="cash" size={24} color="#fbbf24" />
-        </View>
-        <View style={styles.statInfo}>
-          <ThemedText style={styles.statTitle}>Dépôts Total</ThemedText>
-          <ThemedText style={styles.statValue}>{formatCurrency(stats.totalDeposits)}</ThemedText>          
-        </View>
-      </ThemedCard>
+    const sortedDates = Object.keys(depositByDate)
+      .sort((a, b) => new Date(a) - new Date(b));
+    const last7Dates = sortedDates.slice(-7);
+    const amounts = last7Dates.map(date => depositByDate[date] || 0);
 
-      <ThemedCard style={styles.depositStatCard}>
-        <View style={styles.depositStatHeader}>
-          <Ionicons name="trending-up" size={20} color="#3b82f6" />
-          <ThemedText style={styles.depositStatTitle}>Dépôts enchères</ThemedText>
-        </View>
-        <ThemedText style={styles.depositStatValue}>{formatCurrency(stats.bidDeposits)}</ThemedText>
-      </ThemedCard>
-    </View>
-  );
+    const chartData = {
+      labels: last7Dates.map(date => date.substring(0, 5)),
+      datasets: [{ data: amounts.length ? amounts : [0] }]
+    };
 
-  const renderCharts = () => {
-    const hasAuctionData = stats.activeAuctions > 0 || stats.endedAuctions > 0 || stats.pendingAuctions > 0;
-    const hasDepositData = depositChartData.datasets[0]?.data?.length > 0 && 
-                          depositChartData.datasets[0].data[0] > 0;
+    if (amounts.length === 0) {
+      return (
+        <ThemedCard style={styles.chartCard}>
+          <ThemedText style={styles.chartTitle}>
+            Évolution des dépôts
+          </ThemedText>
+          <View style={styles.noDataContainer}>
+            <Ionicons name="bar-chart-outline" size={48} color="#ccc" />
+            <ThemedText style={styles.noDataText}>
+              Aucune donnée disponible
+            </ThemedText>
+          </View>
+        </ThemedCard>
+      );
+    }
 
     return (
-      <View style={styles.chartsContainer}>
-        {hasAuctionData && (
+      <ThemedCard style={styles.chartCard}>
+        <View style={styles.chartHeader}>
+          <ThemedText style={styles.chartTitle}>
+            Évolution des dépôts
+          </ThemedText>
+          <ThemedText style={styles.chartSubtitle}>
+            {dateFilter === 'day' ? 'Aujourd\'hui' :
+             dateFilter === 'week' ? '7 derniers jours' :
+             dateFilter === 'month' ? '30 derniers jours' :
+             dateFilter === 'year' ? '12 derniers mois' : 
+             'Période personnalisée'}
+          </ThemedText>
+        </View>
+        <View style={styles.chartWrapper}>
+          <LineChart
+            data={chartData}
+            width={Math.min(screenWidth - 60, 350)}
+            height={220}
+            chartConfig={{
+              backgroundColor: theme.cardBackground,
+              backgroundGradientFrom: theme.cardBackground,
+              backgroundGradientTo: theme.cardBackground,
+              decimalPlaces: 2,
+              color: (opacity = 1) => Colors.primary,
+              labelColor: (opacity = 1) => theme.text,
+              style: { borderRadius: 16 },
+              propsForDots: { 
+                r: '6', 
+                strokeWidth: '2', 
+                stroke: Colors.primary 
+              },
+            }}
+            bezier
+            style={styles.chart}
+            formatYLabel={(value) => `${parseFloat(value).toFixed(0)} TND`}
+          />
+        </View>
+      </ThemedCard>
+    );
+  };
+
+  const renderDashboard = () => {
+    const chartData = getAuctionChartData();
+    
+    return (
+      <>
+        <View style={styles.statsGrid}>
+          <ThemedCard style={styles.statCard}>
+            <View style={[
+              styles.statIconContainer, 
+              { backgroundColor: Colors.primary + '20' }
+            ]}>
+              <Ionicons name="people" size={24} color={Colors.primary} />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statValue}>
+                {stats.totalUsers}
+              </ThemedText>
+              <ThemedText style={styles.statTitle}>
+                Utilisateurs
+              </ThemedText>
+            </View>
+          </ThemedCard>
+
+          <ThemedCard style={styles.statCard}>
+            <View style={[
+              styles.statIconContainer, 
+              { backgroundColor: '#3b82f6' + '20' }
+            ]}>
+              <Ionicons name="hammer" size={24} color="#3b82f6" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statValue}>
+                {stats.totalAuctions}
+              </ThemedText>
+              <ThemedText style={styles.statTitle}>
+                Enchères
+              </ThemedText>
+            </View>
+          </ThemedCard>
+        </View>
+
+        {chartData && chartData.length > 0 && (
           <ThemedCard style={styles.chartCard}>
-            <ThemedText style={styles.chartTitle}>Répartition des enchères</ThemedText>
-            <View style={styles.chartWrapper}>
+            <View style={styles.chartHeader}>
+              <ThemedText style={styles.chartTitle}>
+                Répartition des enchères
+              </ThemedText>
+              <ThemedText style={styles.chartSubtitle}>
+                Total: {auctionCounts.active + auctionCounts.pending + 
+                        auctionCounts.denied + auctionCounts.ended}
+              </ThemedText>
+            </View>
+            <View style={styles.pieChartContainer}>
               <PieChart
-                data={[
-                  {
-                    name: 'Actives',
-                    population: stats.activeAuctions || 0,
-                    color: '#4ade80',
-                    legendFontColor: theme.text,
-                    legendFontSize: 12
-                  },
-                  {
-                    name: 'En attente',
-                    population: stats.pendingAuctions || 0,
-                    color: '#fbbf24',
-                    legendFontColor: theme.text,
-                    legendFontSize: 12
-                  },
-                  {
-                    name: 'Refusées',
-                    population: stats.deniedAuctions || 0,
-                    color: '#ef4444',
-                    legendFontColor: theme.text,
-                    legendFontSize: 12
-                  },
-                  {
-                    name: 'Terminées',
-                    population: stats.endedAuctions || 0,
-                    color: '#9ca3af',
-                    legendFontColor: theme.text,
-                    legendFontSize: 12
-                  }
-                ].filter(item => item.population > 0)}
+                data={chartData}
                 width={Math.min(screenWidth - 60, 300)}
-                height={180}
+                height={200}
                 chartConfig={{
-                  color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  labelColor: (opacity = 1) => theme.text,
                 }}
                 accessor="population"
                 backgroundColor="transparent"
@@ -594,107 +1064,142 @@ const AdminDashboard = () => {
                 absolute
               />
             </View>
+            <View style={styles.legendContainer}>
+              {chartData.map((item, index) => (
+                <View key={index} style={styles.legendItem}>
+                  <View style={[
+                    styles.legendColor, 
+                    { backgroundColor: item.color }
+                  ]} />
+                  <ThemedText style={styles.legendText}>
+                    {item.name}: {item.population} (
+                    {Math.round((item.population / 
+                      (auctionCounts.active + auctionCounts.pending + 
+                       auctionCounts.denied + auctionCounts.ended)) * 100)}%)
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
           </ThemedCard>
         )}
 
-        {hasDepositData && (
-          <ThemedCard style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <ThemedText style={styles.chartTitle}>Évolution des dépôts</ThemedText>
-              <View style={styles.chartLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: Colors.primary }]} />
-                  <ThemedText style={styles.legendText}>Montant (TND)</ThemedText>
-                </View>
-              </View>
+        <View style={styles.depositStatsRow}>
+          <ThemedCard style={styles.statCard}>
+            <View style={[styles.statIconContainer, { backgroundColor: '#fbbf24' + '20' }]}>
+              <Ionicons name="cash" size={24} color="#fbbf24" />
             </View>
-            <View style={styles.chartWrapper}>
-              <BarChart
-                data={depositChartData}
-                width={Math.min(screenWidth - 60, 350)}
-                height={180}
-                chartConfig={{
-                  backgroundColor: Colors.primary,
-                  backgroundGradientFrom: Colors.primary,
-                  backgroundGradientTo: '#764ba2',
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                  labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                  style: {
-                    borderRadius: 16,
-                  },
-                  barPercentage: 0.7,
-                }}
-                style={styles.chart}
-                showValuesOnTopOfBars
-                fromZero
-              />
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statTitle}>Dépôts Total</ThemedText>
+              <ThemedText style={styles.statValue}>{formatCurrency(stats.totalDeposits)}</ThemedText>
             </View>
           </ThemedCard>
-        )}
-      </View>
+        </View>
+
+        <View style={styles.depositStatsRow}>
+          <ThemedCard style={styles.statCard}>
+            <View style={[styles.statIconContainer, { backgroundColor: '#3b82f6' + '20' }]}>
+              <Ionicons name="hammer" size={24} color="#3b82f6" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statTitle}>Dépôts Enchères</ThemedText>
+              <ThemedText style={styles.statValue}>{formatCurrency(depositStats.auction)}</ThemedText>
+            </View>
+          </ThemedCard>
+
+          <ThemedCard style={styles.statCard}>
+            <View style={[styles.statIconContainer, { backgroundColor: '#f59e0b' + '20' }]}>
+              <Ionicons name="people" size={24} color="#f59e0b" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statTitle}>Dépôts Enchères</ThemedText>
+              <ThemedText style={styles.statValue}>{formatCurrency(depositStats.bids)}</ThemedText>
+            </View>
+          </ThemedCard>
+        </View>
+
+        {renderDateFilter()}
+        {renderDepositChart()}
+
+        <View style={styles.statsGrid}>
+          <ThemedCard style={styles.statCard}>
+            <View style={[
+              styles.statIconContainer, 
+              { backgroundColor: '#4ade80' + '20' }
+            ]}>
+              <Ionicons name="cube" size={24} color="#4ade80" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statValue}>
+                {stats.totalParcels}
+              </ThemedText>
+              <ThemedText style={styles.statTitle}>
+                Colis
+              </ThemedText>
+            </View>
+          </ThemedCard>
+
+          <ThemedCard style={styles.statCard}>
+            <View style={[
+              styles.statIconContainer, 
+              { backgroundColor: '#f59e0b' + '20' }
+            ]}>
+              <Ionicons name="time" size={24} color="#f59e0b" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statValue}>
+                {stats.pendingParcels}
+              </ThemedText>
+              <ThemedText style={styles.statTitle}>
+                En attente
+              </ThemedText>
+            </View>
+          </ThemedCard>
+
+          <ThemedCard style={styles.statCard}>
+            <View style={[
+              styles.statIconContainer, 
+              { backgroundColor: '#22c55e' + '20' }
+            ]}>
+              <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+            </View>
+            <View style={styles.statInfo}>
+              <ThemedText style={styles.statValue}>
+                {stats.deliveredParcels}
+              </ThemedText>
+              <ThemedText style={styles.statTitle}>
+                Livrés
+              </ThemedText>
+            </View>
+          </ThemedCard>
+        </View>
+      </>
     );
   };
-
-  const renderTabButtons = () => (
-    <View style={styles.tabContainer}>
-      <TouchableOpacity
-        style={[styles.tabButton, activeTab === 'overview' && styles.tabButtonActive]}
-        onPress={() => setActiveTab('overview')}
-      >
-        <Ionicons 
-          name="bar-chart-outline" 
-          size={18} 
-          color={activeTab === 'overview' ? '#fff' : theme.iconColor} 
-        />
-        <ThemedText style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
-          Aperçu
-        </ThemedText>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.tabButton, activeTab === 'users' && styles.tabButtonActive]}
-        onPress={() => setActiveTab('users')}
-      >
-        <Ionicons 
-          name="people-outline" 
-          size={18} 
-          color={activeTab === 'users' ? '#fff' : theme.iconColor} 
-        />
-        <ThemedText style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>
-          Utilisateurs ({users.length})
-        </ThemedText>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.tabButton, activeTab === 'auctions' && styles.tabButtonActive]}
-        onPress={() => setActiveTab('auctions')}
-      >
-        <Ionicons 
-          name="hammer-outline" 
-          size={18} 
-          color={activeTab === 'auctions' ? '#fff' : theme.iconColor} 
-        />
-        <ThemedText style={[styles.tabText, activeTab === 'auctions' && styles.tabTextActive]}>
-          Enchères ({auctions.length})
-        </ThemedText>
-      </TouchableOpacity>
-    </View>
-  );
 
   const renderUsersList = () => (
     <ThemedCard style={styles.listCard}>
       <View style={styles.listHeader}>
-        <ThemedText style={styles.listTitle}>Gestion des utilisateurs</ThemedText>
-        <ThemedText style={styles.listCount}>{users.length} utilisateurs</ThemedText>
+        <ThemedText style={styles.listTitle}>
+          Gestion des utilisateurs
+        </ThemedText>
+        <ThemedText style={styles.listCount}>
+          {users.length} utilisateurs
+        </ThemedText>
       </View>
 
-      {/* Table Headers */}
       <View style={styles.tableHeader}>
-        <ThemedText style={[styles.headerCell, { flex: 2 }]}>Utilisateur</ThemedText>
-        <ThemedText style={[styles.headerCell, { flex: 1 }]}>Rôle</ThemedText>
-        <ThemedText style={[styles.headerCell, { flex: 1 }]}>Statut</ThemedText>
-        <ThemedText style={[styles.headerCell, { flex: 1.5 }]}>Actions</ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 2 }]}>
+          Utilisateur
+        </ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 1 }]}>
+          Rôle
+        </ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 1 }]}>
+          Statut
+        </ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 2 }]}>
+          Actions
+        </ThemedText>
       </View>
 
       <ScrollView style={styles.tableBody}>
@@ -703,70 +1208,130 @@ const AdminDashboard = () => {
             styles.tableRow,
             index % 2 === 0 && { backgroundColor: theme.uiBackground + '40' }
           ]}>
-            {/* User Info */}
             <View style={{ flex: 2 }}>
               <ThemedText style={styles.userName}>
                 {userItem.firstname} {userItem.lastname}
               </ThemedText>
-              <ThemedText style={styles.userEmail}>{userItem.email}</ThemedText>
+              <ThemedText style={styles.userEmail}>
+                {userItem.email}
+              </ThemedText>
             </View>
             
-            {/* Role Badge */}
             <View style={{ flex: 1 }}>
               <View style={[
                 styles.roleBadge,
-                { backgroundColor: userItem.role === 'ADMIN' ? Colors.primary : '#666' }
+                { backgroundColor: 
+                  userItem.role === 'ADMIN' ? Colors.primary : 
+                  userItem.role === 'Transporter' ? '#3b82f6' : '#666' 
+                }
               ]}>
-                <ThemedText style={styles.roleText}>{userItem.role}</ThemedText>
+                <ThemedText style={styles.roleText}>
+                  {userItem.role}
+                </ThemedText>
               </View>
             </View>
             
-            {/* Status Badge */}
             <View style={{ flex: 1 }}>
               <View style={[
                 styles.statusBadge,
-                { backgroundColor: userItem.status === 'Activated' ? '#4ade80' : 
-                                  userItem.status === 'Blocked' ? '#ef4444' : '#fbbf24' }
+                { backgroundColor: 
+                  userItem.status === 'Activated' ? '#4ade80' : 
+                  userItem.status === 'Blocked' ? '#ef4444' : '#fbbf24' 
+                }
               ]}>
-                <ThemedText style={styles.statusText}>{userItem.status}</ThemedText>
+                <ThemedText style={styles.statusText}>
+                  {userItem.status}
+                </ThemedText>
               </View>
             </View>
 
-            {/* Actions */}
-            <View style={{ flex: 1.5, flexDirection: 'row', gap: 8 }}>
-              {/* Block/Unblock Button */}
-              <TouchableOpacity
-                onPress={() => handleBlockUser(userItem.id, userItem.status)}
-                disabled={processingUserId === userItem.id}
-                style={[styles.actionButton, { backgroundColor: userItem.status === 'Blocked' ? '#4ade80' : '#ef4444' }]}
-              >
-                {processingUserId === userItem.id ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Ionicons 
-                    name={userItem.status === 'Blocked' ? 'lock-open' : 'lock-closed'} 
-                    size={16} 
-                    color="#fff" 
-                  />
-                )}
-              </TouchableOpacity>
+            <View style={{ 
+              flex: 2, 
+              flexDirection: 'row', 
+              gap: 8, 
+              flexWrap: 'wrap' 
+            }}>
+              {userItem.status !== 'Blocked' ? (
+                <TouchableOpacity
+                  onPress={() => handleBlockUser(userItem.id)}
+                  disabled={processingUserId === userItem.id || blockLoading}
+                  style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+                >
+                  {(processingUserId === userItem.id && blockLoading) ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="lock-closed" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => handleUnblockUser(userItem.id)}
+                  disabled={processingUserId === userItem.id || unblockLoading}
+                  style={[styles.actionButton, { backgroundColor: '#4ade80' }]}
+                >
+                  {(processingUserId === userItem.id && unblockLoading) ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="lock-open" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
               
-              {/* Role Change Button */}
-              <TouchableOpacity
-                onPress={() => handleRoleChange(userItem.id, userItem.role)}
-                disabled={processingUserId === userItem.id}
-                style={[styles.actionButton, { backgroundColor: userItem.role === 'ADMIN' ? '#ff9800' : Colors.primary }]}
-              >
-                {processingUserId === userItem.id ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Ionicons 
-                    name={userItem.role === 'ADMIN' ? 'person' : 'shield'} 
-                    size={16} 
-                    color="#fff" 
-                  />
-                )}
-              </TouchableOpacity>
+              {userItem.role !== 'ADMIN' && userItem.role !== 'Transporter' && (
+                <TouchableOpacity
+                  onPress={() => handleRoleChange(userItem.id, userItem.role)}
+                  disabled={processingUserId === userItem.id}
+                  style={[styles.actionButton, { backgroundColor: Colors.primary }]}
+                >
+                  {processingUserId === userItem.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="shield" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {userItem.role === 'ADMIN' && (
+                <TouchableOpacity
+                  onPress={() => handleRoleChange(userItem.id, userItem.role)}
+                  disabled={processingUserId === userItem.id}
+                  style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+                >
+                  {processingUserId === userItem.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="person" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {userItem.role !== 'Transporter' && userItem.role !== 'ADMIN' && (
+                <TouchableOpacity
+                  onPress={() => handleMakeTransporter(userItem.id)}
+                  disabled={processingUserId === userItem.id}
+                  style={[styles.actionButton, { backgroundColor: '#3b82f6' }]}
+                >
+                  {processingUserId === userItem.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="car" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {userItem.role === 'Transporter' && (
+                <TouchableOpacity
+                  onPress={() => handleRemoveTransporter(userItem.id)}
+                  disabled={processingUserId === userItem.id}
+                  style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+                >
+                  {processingUserId === userItem.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="person" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ))}
@@ -818,19 +1383,28 @@ const AdminDashboard = () => {
         </View>
 
         {filteredAuctions.map(auction => (
-          <TouchableOpacity key={auction.id} onPress={() => handleAuctionPress(auction)}>
-            <ThemedCard style={styles.auctionItemCard}>
+          <TouchableOpacity 
+            key={auction.id} 
+            onPress={() => handleAuctionPress(auction)}
+          >
+            <View style={styles.auctionItemCard}>
               <View style={styles.auctionItemHeader}>
-                <ThemedText style={styles.auctionItemTitle}>{auction.title}</ThemedText>
+                <View style={styles.auctionTitleContainer}>
+                  <Ionicons name="hammer" size={20} color={Colors.primary} />
+                  <ThemedText style={styles.auctionItemTitle}>
+                    {auction.title}
+                  </ThemedText>
+                </View>
                 <View style={[
-                  styles.smallStatusBadge,
+                  styles.statusBadgeSmall,
                   { backgroundColor: 
                     auction.status === 'active' ? '#4ade80' :
                     auction.status === 'pending' ? '#fbbf24' :
                     auction.status === 'denied' ? '#ef4444' : 
-                    auction.status === 'ended' ? '#9ca3af' : '#666' }
+                    auction.status === 'ended' ? '#9ca3af' : '#666' 
+                  }
                 ]}>
-                  <ThemedText style={styles.smallStatusText}>
+                  <ThemedText style={styles.statusBadgeTextSmall}>
                     {auction.status === 'active' ? 'Active' :
                      auction.status === 'pending' ? 'En attente' :
                      auction.status === 'denied' ? 'Refusée' :
@@ -840,33 +1414,33 @@ const AdminDashboard = () => {
               </View>
               
               <View style={styles.auctionItemDetails}>
-                <View style={styles.auctionItemDetail}>
-                  <Ionicons name="person" size={14} color="#666" />
-                  <ThemedText style={styles.auctionItemDetailText}>
-                    {getSellerName(auction.sellerId)}
+                <View style={styles.detailChip}>
+                  <Ionicons name="person-outline" size={14} color="#666" />
+                  <ThemedText style={styles.detailChipText}>
+                    {getUserName(auction.sellerId)}
                   </ThemedText>
                 </View>
                 
-                <View style={styles.auctionItemDetail}>
-                  <Ionicons name="cash" size={14} color="#666" />
-                  <ThemedText style={styles.auctionItemDetailText}>
+                <View style={styles.detailChip}>
+                  <Ionicons name="cash-outline" size={14} color="#666" />
+                  <ThemedText style={styles.detailChipText}>
                     {auction.startingPrice} TND
                   </ThemedText>
                 </View>
                 
-                <View style={styles.auctionItemDetail}>
-                  <Ionicons name="people" size={14} color="#666" />
-                  <ThemedText style={styles.auctionItemDetailText}>
-                    {auction.bidders ? Object.keys(auction.bidders).length : 0} enchérisseurs
+                <View style={styles.detailChip}>
+                  <Ionicons name="people-outline" size={14} color="#666" />
+                  <ThemedText style={styles.detailChipText}>
+                    {auction.bidders ? Object.keys(auction.bidders).length : 0} 
+                    enchérisseurs
                   </ThemedText>
                 </View>
               </View>
 
-              {/* Approve/Deny buttons for pending auctions */}
               {auction.status === 'pending' && (
                 <View style={styles.adminActions}>
                   <TouchableOpacity
-                    style={[styles.adminActionButton, styles.approveButton]}
+                    style={[styles.actionChip, styles.approveChip]}
                     onPress={() => handleApproveAuction(auction.id)}
                     disabled={processingAuctionId === auction.id}
                   >
@@ -875,13 +1449,15 @@ const AdminDashboard = () => {
                     ) : (
                       <>
                         <Ionicons name="checkmark" size={16} color="#fff" />
-                        <ThemedText style={styles.adminActionText}>Approuver</ThemedText>
+                        <ThemedText style={styles.actionChipText}>
+                          Approuver
+                        </ThemedText>
                       </>
                     )}
                   </TouchableOpacity>
                   
                   <TouchableOpacity
-                    style={[styles.adminActionButton, styles.denyButton]}
+                    style={[styles.actionChip, styles.denyChip]}
                     onPress={() => handleDenyAuction(auction.id)}
                     disabled={processingAuctionId === auction.id}
                   >
@@ -890,18 +1466,446 @@ const AdminDashboard = () => {
                     ) : (
                       <>
                         <Ionicons name="close" size={16} color="#fff" />
-                        <ThemedText style={styles.adminActionText}>Refuser</ThemedText>
+                        <ThemedText style={styles.actionChipText}>
+                          Refuser
+                        </ThemedText>
                       </>
                     )}
                   </TouchableOpacity>
                 </View>
               )}
-            </ThemedCard>
+            </View>
           </TouchableOpacity>
         ))}
       </View>
     );
   };
+
+  const renderParcelsList = () => {
+    const filteredParcels = adminParcelsList.filter(parcel => {
+      if (parcelFilter === 'all') return true;
+      if (parcelFilter === 'pending') return !parcel.delivred && !parcel.transporterId;
+      if (parcelFilter === 'assigned') return parcel.transporterId && !parcel.delivred;
+      if (parcelFilter === 'delivered') return parcel.delivred;
+      return true;
+    });
+
+    return (
+      <View>
+        <View style={styles.auctionFilters}>
+          {['all', 'pending', 'assigned', 'delivered'].map((filter) => (
+            <TouchableOpacity
+              key={filter}
+              style={[
+                styles.auctionFilterChip,
+                parcelFilter === filter && styles.auctionFilterChipActive
+              ]}
+              onPress={() => setParcelFilter(filter)}
+            >
+              <Ionicons 
+                name={filter === 'all' ? 'apps' : 
+                      filter === 'pending' ? 'time' :
+                      filter === 'assigned' ? 'car' : 'checkmark-circle'} 
+                size={14} 
+                color={parcelFilter === filter ? '#fff' : '#666'} 
+              />
+              <ThemedText style={[
+                styles.auctionFilterText,
+                parcelFilter === filter && styles.auctionFilterTextActive
+              ]}>
+                {filter === 'all' ? 'Tous' : 
+                 filter === 'pending' ? 'En attente' :
+                 filter === 'assigned' ? 'Assignés' : 'Livrés'}
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {filteredParcels.map(parcel => (
+          <View key={parcel.id} style={styles.parcelCard}>
+            <View style={styles.parcelHeader}>
+              <View style={styles.parcelInfo}>
+                <Ionicons name="cube" size={20} color={Colors.primary} />
+                <ThemedText style={styles.parcelId}>
+                  Colis #{parcel.id.substring(0, 8)}
+                </ThemedText>
+              </View>
+              <View style={[
+                styles.parcelStatus,
+                { backgroundColor: 
+                  parcel.delivred ? '#4ade80' : 
+                  parcel.transporterId ? '#3b82f6' : '#fbbf24' 
+                }
+              ]}>
+                <ThemedText style={styles.parcelStatusText}>
+                  {parcel.delivred ? 'Livré' : 
+                   parcel.transporterId ? 'En cours' : 'En attente'}
+                </ThemedText>
+              </View>
+            </View>
+            
+            <View style={styles.parcelDetails}>
+              <View style={styles.parcelDetailRow}>
+                <Ionicons name="hammer" size={14} color="#666" />
+                <ThemedText style={styles.parcelDetailText}>
+                  Enchère: {getUserName(parcel.auctionId)}
+                </ThemedText>
+              </View>
+              
+              <View style={styles.parcelDetailRow}>
+                <Ionicons name="person" size={14} color="#666" />
+                <ThemedText style={styles.parcelDetailText}>
+                  Acheteur: {getUserName(parcel.buyerId)}
+                </ThemedText>
+              </View>
+              
+              <View style={styles.parcelDetailRow}>
+                <Ionicons name="car" size={14} color="#666" />
+                <ThemedText style={styles.parcelDetailText}>
+                  Transporteur: {parcel.transporterId ? 
+                    getUserName(parcel.transporterId) : 'Non assigné'}
+                </ThemedText>
+              </View>
+            </View>
+
+            {!parcel.delivred && (
+              <View style={styles.parcelActions}>
+                {!parcel.transporterId && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.assignButton]}
+                    onPress={() => {
+                      setSelectedParcelForAssign(parcel);
+                      setAssignModalVisible(true);
+                    }}
+                    disabled={processingParcelId === parcel.id}
+                  >
+                    {processingParcelId === parcel.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="car" size={16} color="#fff" />
+                        <ThemedText style={styles.actionButtonText}>
+                          Assigner
+                        </ThemedText>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+                
+                {parcel.transporterId && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.deliverButton]}
+                    onPress={() => handleDeliverParcel(parcel.id)}
+                    disabled={processingParcelId === parcel.id}
+                  >
+                    {processingParcelId === parcel.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                        <ThemedText style={styles.actionButtonText}>
+                          Marquer livré
+                        </ThemedText>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {parcel.delivred && parcel.isValid !== null && (
+              <View style={styles.qualityInfo}>
+                <Ionicons 
+                  name={parcel.isValid ? "checkmark-circle" : "alert-circle"} 
+                  size={16} 
+                  color={parcel.isValid ? "#4ade80" : "#ef4444"} 
+                />
+                <ThemedText style={[
+                  styles.qualityText,
+                  { color: parcel.isValid ? "#4ade80" : "#ef4444" }
+                ]}>
+                  {parcel.isValid ? 'Produit conforme' : 'Produit non conforme'}
+                </ThemedText>
+                {!parcel.isValid && parcel.unvalidDescription && (
+                  <ThemedText style={styles.qualityDescription}>
+                    Motif: {parcel.unvalidDescription}
+                  </ThemedText>
+                )}
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderTransportersList = () => (
+    <ThemedCard style={styles.listCard}>
+      <View style={styles.listHeader}>
+        <ThemedText style={styles.listTitle}>
+          Gestion des transporteurs
+        </ThemedText>
+        <ThemedText style={styles.listCount}>
+          {transporters.length} transporteurs
+        </ThemedText>
+      </View>
+
+      <View style={styles.tableHeader}>
+        <ThemedText style={[styles.headerCell, { flex: 2 }]}>
+          Transporteur
+        </ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 1 }]}>
+          Statut
+        </ThemedText>
+        <ThemedText style={[styles.headerCell, { flex: 1 }]}>
+          Actions
+        </ThemedText>
+      </View>
+
+      <ScrollView style={styles.tableBody}>
+        {transporters.map((transporter, index) => (
+          <View key={transporter.id} style={[
+            styles.tableRow,
+            index % 2 === 0 && { backgroundColor: theme.uiBackground + '40' }
+          ]}>
+            <View style={{ flex: 2 }}>
+              <ThemedText style={styles.userName}>
+                {transporter.firstname} {transporter.lastname}
+              </ThemedText>
+              <ThemedText style={styles.userEmail}>
+                {transporter.email}
+              </ThemedText>
+            </View>
+            
+            <View style={{ flex: 1 }}>
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: 
+                  transporter.status === 'Activated' ? '#4ade80' : '#fbbf24' 
+                }
+              ]}>
+                <ThemedText style={styles.statusText}>
+                  {transporter.status}
+                </ThemedText>
+              </View>
+            </View>
+
+            <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => handleRemoveTransporter(transporter.id)}
+                disabled={processingUserId === transporter.id}
+                style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+              >
+                {processingUserId === transporter.id ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="person" size={16} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </ThemedCard>
+  );
+
+  const renderNotificationsList = () => {
+    const unreadNotifications = adminNotifications.filter(n => !n.read);
+    
+    return (
+      <ThemedCard style={styles.listCard}>
+        <View style={styles.listHeader}>
+          <ThemedText style={styles.listTitle}>
+            Notifications
+          </ThemedText>
+          <View style={styles.listHeaderRight}>
+            {unreadNotifications.length > 0 && !notificationSelectionMode && (
+              <TouchableOpacity onPress={() => setNotificationSelectionMode(true)}>
+                <ThemedText style={styles.selectText}>
+                  Sélectionner
+                </ThemedText>
+              </TouchableOpacity>
+            )}
+            {notificationSelectionMode && (
+              <View style={styles.selectionActions}>
+                <TouchableOpacity onPress={handleSelectAllNotifications}>
+                  <ThemedText style={styles.selectText}>
+                    {selectedNotificationIds.length === adminNotifications.length 
+                      ? 'Tout désélectionner' 
+                      : 'Tout sélectionner'}
+                  </ThemedText>
+                </TouchableOpacity>
+                {selectedNotificationIds.length > 0 && (
+                  <TouchableOpacity onPress={handleMarkSelectedAsRead}>
+                    <ThemedText style={[styles.selectText, { color: Colors.primary }]}>
+                      Marquer lues ({selectedNotificationIds.length})
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => {
+                  setNotificationSelectionMode(false);
+                  setSelectedNotificationIds([]);
+                }}>
+                  <ThemedText style={styles.selectText}>
+                    Annuler
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <ScrollView style={styles.tableBody}>
+          {adminNotifications.length === 0 ? (
+            <View style={styles.noNotificationsContainer}>
+              <Ionicons name="notifications-off-outline" size={48} color="#ccc" />
+              <ThemedText style={styles.noNotificationsText}>
+                Aucune notification
+              </ThemedText>
+            </View>
+          ) : (
+            adminNotifications.map((notification, index) => (
+              <TouchableOpacity
+                key={notification.id}
+                style={[
+                  styles.notificationRow,
+                  !notification.read && styles.unreadNotificationRow,
+                  notificationSelectionMode && 
+                    selectedNotificationIds.includes(notification.id) && 
+                    styles.selectedNotificationRow
+                ]}
+                onPress={() => handleNotificationPress(notification)}
+                onLongPress={() => handleLongPressNotification(notification.id)}
+                delayLongPress={300}
+              >
+                <View style={styles.notificationIcon}>
+                  {notification.type === 'AUCTION_PENDING' ? (
+                    <Ionicons name="hammer" size={24} color="#fbbf24" />
+                  ) : (
+                    <Ionicons name="alert-circle" size={24} color="#ef4444" />
+                  )}
+                </View>
+                <View style={styles.notificationContent}>
+                  <ThemedText style={[
+                    styles.notificationMessage,
+                    !notification.read && styles.unreadNotificationMessage
+                  ]}>
+                    {notification.message}
+                  </ThemedText>
+                  <ThemedText style={styles.notificationDate}>
+                    {new Date(notification.createdAt).toLocaleString()}
+                  </ThemedText>
+                </View>
+                {!notification.read && !notificationSelectionMode && 
+                  <View style={styles.unreadDot} />
+                }
+                {notificationSelectionMode && (
+                  <Ionicons
+                    name={selectedNotificationIds.includes(notification.id) 
+                      ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={selectedNotificationIds.includes(notification.id) 
+                      ? Colors.primary : '#ccc'}
+                  />
+                )}
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      </ThemedCard>
+    );
+  };
+
+  const renderAssignModal = () => (
+    <Modal
+      visible={assignModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => {
+        setAssignModalVisible(false);
+        setPickUpAdress('');
+        setDestinationAdress('');
+      }}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <ThemedText style={styles.modalTitle}>
+              Assigner un transporteur
+            </ThemedText>
+            <TouchableOpacity onPress={() => setAssignModalVisible(false)}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalList}>
+            <ThemedText style={styles.modalLabel}>Adresse de collecte:</ThemedText>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Entrez l'adresse de collecte"
+              value={pickUpAdress}
+              onChangeText={setPickUpAdress}
+              multiline
+              numberOfLines={2}
+            />
+            
+            <ThemedText style={styles.modalLabel}>Adresse de destination:</ThemedText>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Entrez l'adresse de destination"
+              value={destinationAdress}
+              onChangeText={setDestinationAdress}
+              multiline
+              numberOfLines={2}
+            />
+            
+            <ThemedText style={styles.modalLabel}>Sélectionnez un transporteur:</ThemedText>
+            {transporters.length === 0 ? (
+              <ThemedText style={styles.noTransportersText}>
+                Aucun transporteur disponible
+              </ThemedText>
+            ) : (
+              transporters.map(transporter => (
+                <TouchableOpacity
+                  key={transporter.id}
+                  style={styles.modalListItem}
+                  onPress={() => {
+                    if (!pickUpAdress.trim()) {
+                      Alert.alert('Erreur', 'Veuillez entrer l\'adresse de collecte');
+                      return;
+                    }
+                    if (!destinationAdress.trim()) {
+                      Alert.alert('Erreur', 'Veuillez entrer l\'adresse de destination');
+                      return;
+                    }
+                    handleAssignTransporter(
+                      selectedParcelForAssign?.id, 
+                      transporter.id,
+                      pickUpAdress,
+                      destinationAdress
+                    );
+                  }}
+                >
+                  <View style={styles.modalListItemContent}>
+                    <Ionicons name="person" size={20} color={Colors.primary} />
+                    <View style={styles.modalListItemInfo}>
+                      <ThemedText style={styles.modalListItemName}>
+                        {transporter.firstname} {transporter.lastname}
+                      </ThemedText>
+                      <ThemedText style={styles.modalListItemEmail}>
+                        {transporter.email}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderAuctionDetails = () => (
     <Modal
@@ -913,7 +1917,9 @@ const AdminDashboard = () => {
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <ThemedText style={styles.modalTitle}>Détails de l'enchère</ThemedText>
+            <ThemedText style={styles.modalTitle}>
+              Détails de l'enchère
+            </ThemedText>
             <TouchableOpacity onPress={() => setAuctionModalVisible(false)}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -921,7 +1927,6 @@ const AdminDashboard = () => {
 
           {selectedAuction && (
             <ScrollView>
-              {/* Tiny Images at Top */}
               {auctionPhotos.length > 0 && (
                 <View style={styles.photoStrip}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -939,7 +1944,9 @@ const AdminDashboard = () => {
               )}
 
               <ThemedCard style={styles.modalAuctionCard}>
-                <ThemedText style={styles.modalAuctionTitle}>{selectedAuction.title}</ThemedText>
+                <ThemedText style={styles.modalAuctionTitle}>
+                  {selectedAuction.title}
+                </ThemedText>
                 
                 <View style={styles.modalAuctionDetail}>
                   <Ionicons name="document-text" size={16} color={Colors.primary} />
@@ -951,7 +1958,7 @@ const AdminDashboard = () => {
                 <View style={styles.modalAuctionDetail}>
                   <Ionicons name="person" size={16} color={Colors.primary} />
                   <ThemedText style={styles.modalAuctionDetailText}>
-                    Vendeur: {getSellerName(selectedAuction.sellerId)}
+                    Vendeur: {getUserName(selectedAuction.sellerId)}
                   </ThemedText>
                 </View>
 
@@ -965,56 +1972,10 @@ const AdminDashboard = () => {
                 <View style={styles.modalAuctionDetail}>
                   <Ionicons name="calendar" size={16} color={Colors.primary} />
                   <ThemedText style={styles.modalAuctionDetailText}>
-                    Expire le: {new Date(selectedAuction.expireDate).toLocaleDateString('fr-FR')}
+                    Expire le: {new Date(selectedAuction.expireDate)
+                      .toLocaleDateString('fr-FR')}
                   </ThemedText>
                 </View>
-
-                <View style={styles.modalAuctionDetail}>
-                  <Ionicons name="people" size={16} color={Colors.primary} />
-                  <ThemedText style={styles.modalAuctionDetailText}>
-                    Enchérisseurs: {selectedAuction.bidders ? Object.keys(selectedAuction.bidders).length : 0}
-                  </ThemedText>
-                </View>
-
-                <View style={styles.modalAuctionDetail}>
-                  <Ionicons name="information-circle" size={16} color={Colors.primary} />
-                  <ThemedText style={styles.modalAuctionDetailText}>
-                    Statut: {selectedAuction.status === 'pending' ? 'En attente' :
-                             selectedAuction.status === 'active' ? 'Active' :
-                             selectedAuction.status === 'denied' ? 'Refusée' :
-                             selectedAuction.status === 'ended' ? 'Terminée' : selectedAuction.status}
-                  </ThemedText>
-                </View>
-              </ThemedCard>
-
-              <ThemedCard style={styles.modalDepositsCard}>
-                <ThemedText style={styles.modalDepositsTitle}>
-                  Liste des enchérisseurs
-                </ThemedText>
-
-                {selectedAuction.bidders && Object.keys(selectedAuction.bidders).length > 0 ? (
-                  Object.entries(selectedAuction.bidders)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([bidderId, amount], index) => (
-                      <View key={bidderId} style={styles.bidderItem}>
-                        <View style={styles.bidderRank}>
-                          {index === 0 ? (
-                            <Ionicons name="trophy" size={20} color="#fbbf24" />
-                          ) : (
-                            <ThemedText style={styles.rankNumber}>#{index + 1}</ThemedText>
-                          )}
-                        </View>
-                        <ThemedText style={styles.bidderId}>
-                          {bidderId.substring(0, 8)}...
-                        </ThemedText>
-                        <ThemedText style={styles.bidderAmount}>
-                          {amount} TND
-                        </ThemedText>
-                      </View>
-                    ))
-                ) : (
-                  <ThemedText style={styles.noDataText}>Aucun enchérisseur</ThemedText>
-                )}
               </ThemedCard>
             </ScrollView>
           )}
@@ -1023,7 +1984,84 @@ const AdminDashboard = () => {
     </Modal>
   );
 
-  if (loading && !refreshing) {
+  const renderBlockModal = () => (
+    <Modal
+      visible={blockModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => !blockLoading && setBlockModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <ThemedText style={styles.modalTitle}>
+              Bloquer l'utilisateur
+            </ThemedText>
+            <TouchableOpacity 
+              onPress={() => !blockLoading && setBlockModalVisible(false)}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalBody}>
+            <ThemedText style={styles.modalLabel}>
+              Nombre de jours de blocage:
+            </ThemedText>
+            
+            <View style={styles.daysPicker}>
+              {[1, 3, 7, 14, 30].map(days => (
+                <TouchableOpacity
+                  key={days}
+                  style={[
+                    styles.dayButton,
+                    parseInt(blockDays) === days && styles.dayButtonActive
+                  ]}
+                  onPress={() => setBlockDays(days.toString())}
+                  disabled={blockLoading}
+                >
+                  <ThemedText style={[
+                    styles.dayButtonText,
+                    parseInt(blockDays) === days && styles.dayButtonTextActive
+                  ]}>
+                    {days} jour{days > 1 ? 's' : ''}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelModalButton]}
+                onPress={() => setBlockModalVisible(false)}
+                disabled={blockLoading}
+              >
+                <ThemedText style={styles.cancelModalButtonText}>
+                  Annuler
+                </ThemedText>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmModalButton]}
+                onPress={confirmBlockUser}
+                disabled={blockLoading}
+              >
+                {blockLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <ThemedText style={styles.confirmModalButtonText}>
+                    Bloquer
+                  </ThemedText>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  if (loading && !refreshing && activeMenu === 'dashboard') {
     return (
       <ThemedView safe style={styles.centerContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -1034,38 +2072,54 @@ const AdminDashboard = () => {
 
   return (
     <ThemedView safe style={styles.container}>
-      <ScrollView 
-        style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        <View style={styles.header}>
-          <ThemedText title style={styles.headerTitle}>Tableau de bord</ThemedText>
-          <View style={styles.adminBadge}>
-            <Ionicons name="shield" size={16} color="#fff" />
-            <ThemedText style={styles.adminBadgeText}>ADMIN</ThemedText>
-          </View>
-        </View>
-
-        {renderTabButtons()}
-
-        {activeTab === 'overview' && (
-          <>
-            {renderStatsCards()}
-            {renderDepositStats()}
-            {renderDateFilter()}
-            {renderCharts()}
-          </>
-        )}
-
-        {activeTab === 'users' && renderUsersList()}
-        {activeTab === 'auctions' && renderAuctionsList()}
+      <View style={styles.mainLayout}>
+        {renderSidebar()}
         
-        <View style={styles.bottomPadding} />
-      </ScrollView>
+        <View style={[
+          styles.mainContent, 
+          !sidebarOpen && isLargeScreen && styles.mainContentFull
+        ]}>
+          <View style={[
+            styles.contentHeader, 
+            { backgroundColor: theme.navBackground }
+          ]}>
+            {!isLargeScreen && (
+              <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
+                <Ionicons name="menu" size={24} color={theme.iconColorFocused} />
+              </TouchableOpacity>
+            )}
+            <ThemedText style={styles.contentHeaderTitle}>
+              {activeMenu === 'dashboard' && 'Tableau de bord'}
+              {activeMenu === 'users' && 'Gestion des utilisateurs'}
+              {activeMenu === 'auctions' && 'Gestion des enchères'}
+              {activeMenu === 'parcels' && 'Gestion des colis'}
+              {activeMenu === 'transporters' && 'Gestion des transporteurs'}
+              {activeMenu === 'notifications' && 'Notifications'}
+            </ThemedText>
+            <View style={styles.headerRight} />
+          </View>
+
+          <ScrollView 
+            style={styles.contentScroll}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          >
+            <View style={styles.contentInner}>
+              {activeMenu === 'dashboard' && renderDashboard()}
+              {activeMenu === 'users' && renderUsersList()}
+              {activeMenu === 'auctions' && renderAuctionsList()}
+              {activeMenu === 'parcels' && renderParcelsList()}
+              {activeMenu === 'transporters' && renderTransportersList()}
+              {activeMenu === 'notifications' && renderNotificationsList()}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
 
       {renderAuctionDetails()}
+      {renderBlockModal()}
+      {renderAssignModal()}
     </ThemedView>
   );
 };
@@ -1073,501 +2127,778 @@ const AdminDashboard = () => {
 export default AdminDashboard;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { 
+    flex: 1 
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  mainLayout: { 
+    flex: 1, 
+    flexDirection: 'row' 
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: Colors.primary,
+  sidebar: { 
+    width: 280, 
+    backgroundColor: '#1e1a2e', 
+    borderRightWidth: 1, 
+    borderRightColor: '#2d2a3e' 
   },
-  content: {
-    flex: 1,
-    padding: 15,
+  sidebarMobile: { 
+    position: 'absolute', 
+    top: 0, 
+    left: 0, 
+    bottom: 0, 
+    zIndex: 1000, 
+    width: 280, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 2, height: 0 }, 
+    shadowOpacity: 0.3, 
+    shadowRadius: 5, 
+    elevation: 5 
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
+  sidebarHidden: { 
+    display: 'none' 
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  sidebarHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#2d2a3e', 
+    gap: 12 
   },
-  adminBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-    gap: 4,
+  sidebarTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold', 
+    color: '#fff', 
+    flex: 1 
   },
-  adminBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  closeSidebar: { 
+    padding: 5 
   },
-  tabContainer: {
-    flexDirection: 'row',
-    marginBottom: 15,
-    gap: 8,
+  sidebarMenu: { 
+    flex: 1, 
+    paddingTop: 10 
   },
-  tabButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    gap: 6,
+  menuItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 15, 
+    marginHorizontal: 10, 
+    marginVertical: 4, 
+    borderRadius: 12, 
+    gap: 12 
   },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
+  menuItemActive: { 
+    backgroundColor: Colors.primary + '20' 
   },
-  tabText: {
-    fontSize: 13,
-    color: '#666',
+  menuItemText: { 
+    fontSize: 16, 
+    flex: 1 
   },
-  tabTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+  menuItemTextActive: { 
+    color: Colors.primary, 
+    fontWeight: '600' 
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-    gap: 10,
+  badge: { 
+    backgroundColor: Colors.warning, 
+    borderRadius: 10, 
+    paddingHorizontal: 6, 
+    paddingVertical: 2 
   },
-  statCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
+  badgeText: { 
+    color: '#fff', 
+    fontSize: 10, 
+    fontWeight: 'bold' 
   },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  mainContent: { 
+    flex: 1 
   },
-  statInfo: {
-    flex: 1,
+  mainContentFull: { 
+    marginLeft: 0 
   },
-  statValue: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    marginBottom: 2,
+  contentHeader: { 
+    height: 70, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
   },
-  statTitle: {
-    fontSize: 11,
-    opacity: 0.7,
+  menuButton: { 
+    padding: 8, 
+    marginRight: 15 
   },
-  depositStatsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-    gap: 10,
+  contentHeaderTitle: { 
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    flex: 1 
   },
-  depositStatCard: {
-    flex: 1,
-    padding: 12,
+  headerRight: { 
+    width: 40 
   },
-  depositStatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 6,
+  contentScroll: { 
+    flex: 1 
   },
-  depositStatTitle: {
-    fontSize: 12,
-    opacity: 0.7,
+  contentInner: { 
+    padding: 20 
   },
-  depositStatValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.primary,
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  filterSection: {
-    marginBottom: 15,
+  loadingText: { 
+    marginTop: 10, 
+    fontSize: 16, 
+    color: Colors.primary 
   },
-  filterChips: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 5,
+  statsGrid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'space-between', 
+    marginBottom: 15, 
+    gap: 10 
   },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    gap: 4,
+  statCard: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 12 
   },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
+  statIconContainer: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    marginRight: 10 
   },
-  filterChipText: {
-    fontSize: 12,
-    color: '#666',
+  statInfo: { 
+    flex: 1 
   },
-  filterChipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+  statValue: { 
+    fontSize: 15, 
+    fontWeight: 'bold', 
+    marginBottom: 2 
   },
-  customDateContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    gap: 10,
+  statTitle: { 
+    fontSize: 11, 
+    opacity: 0.7 
   },
-  datePickerButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    gap: 6,
+  depositStatsRow: { 
+    flexDirection: 'row', 
+    marginBottom: 15, 
+    gap: 10 
   },
-  datePickerText: {
-    fontSize: 12,
-    color: '#333',
+  filterSection: { 
+    marginBottom: 15 
   },
-  chartsContainer: {
-    gap: 15,
+  filterChips: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    paddingVertical: 5 
   },
-  chartCard: {
-    padding: 15,
+  filterChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    backgroundColor: '#f0f0f0', 
+    gap: 4 
   },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
+  filterChipActive: { 
+    backgroundColor: Colors.primary 
   },
-  chartTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  filterChipText: { 
+    fontSize: 12, 
+    color: '#666' 
   },
-  chartLegend: {
-    flexDirection: 'row',
-    gap: 12,
+  filterChipTextActive: { 
+    color: '#fff', 
+    fontWeight: '600' 
   },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 10,
-    opacity: 0.7,
-  },
-  chartWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 200,
-  },
-  chart: {
-    borderRadius: 16,
-  },
-  listCard: {
-    padding: 15,
-  },
-  listHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  listTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  listCount: {
-    fontSize: 13,
-    opacity: 0.7,
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#f5f5f5',
-  },
-  headerCell: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#666',
-    textTransform: 'uppercase',
-  },
-  tableBody: {
-    maxHeight: 400,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  userName: {
+  filterTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
-  },
-  userEmail: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  roleText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  statusText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  auctionFilters: {
-    flexDirection: 'row',
-    marginBottom: 15,
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  auctionFilterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    gap: 4,
-  },
-  auctionFilterChipActive: {
-    backgroundColor: Colors.primary,
-  },
-  auctionFilterText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  auctionFilterTextActive: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  auctionItemCard: {
-    marginBottom: 10,
-    padding: 12,
-  },
-  auctionItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 8,
+    marginLeft: 4,
   },
-  auctionItemTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
+  customDateContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginTop: 10, 
+    gap: 10 
   },
-  smallStatusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 8,
+  datePickerButton: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 10, 
+    backgroundColor: '#f5f5f5', 
+    borderRadius: 8, 
+    gap: 6 
   },
-  smallStatusText: {
-    color: '#fff',
-    fontSize: 9,
-    fontWeight: '600',
+  datePickerText: { 
+    fontSize: 12, 
+    color: '#333' 
   },
-  auctionItemDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+  chartCard: { 
+    padding: 15, 
+    marginBottom: 15 
   },
-  auctionItemDetail: {
+  chartHeader: { 
+    marginBottom: 15 
+  },
+  chartTitle: { 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
+  chartSubtitle: { 
+    fontSize: 12, 
+    opacity: 0.6, 
+    marginTop: 4 
+  },
+  chartWrapper: { 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  chart: { 
+    borderRadius: 16 
+  },
+  pieChartContainer: { 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    marginVertical: 10 
+  },
+  legendContainer: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'center', 
+    marginTop: 15, 
+    gap: 12 
+  },
+  legendItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6 
+  },
+  legendColor: { 
+    width: 12, 
+    height: 12, 
+    borderRadius: 6 
+  },
+  legendText: { 
+    fontSize: 12 
+  },
+  noDataContainer: { 
+    alignItems: 'center', 
+    padding: 40 
+  },
+  noDataText: { 
+    marginTop: 10, 
+    fontSize: 14, 
+    opacity: 0.6 
+  },
+  listCard: { 
+    padding: 15 
+  },
+  listHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 15, 
+    paddingBottom: 10, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
+  },
+  listHeaderRight: { 
+    flexDirection: 'row', 
+    gap: 12 
+  },
+  listTitle: { 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
+  listCount: { 
+    fontSize: 13, 
+    opacity: 0.7 
+  },
+  tableHeader: { 
+    flexDirection: 'row', 
+    paddingVertical: 10, 
+    paddingHorizontal: 10, 
+    borderBottomWidth: 2, 
+    borderBottomColor: '#e0e0e0', 
+    backgroundColor: '#f5f5f5' 
+  },
+  headerCell: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#666', 
+    textTransform: 'uppercase' 
+  },
+  tableBody: { 
+    maxHeight: 500 
+  },
+  tableRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 12, 
+    paddingHorizontal: 10, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
+  },
+  userName: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    marginBottom: 2 
+  },
+  userEmail: { 
+    fontSize: 12, 
+    opacity: 0.7 
+  },
+  roleBadge: { 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 12, 
+    alignSelf: 'flex-start' 
+  },
+  roleText: { 
+    color: '#fff', 
+    fontSize: 11, 
+    fontWeight: '600', 
+    textAlign: 'center' 
+  },
+  statusBadge: { 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 12, 
+    alignSelf: 'flex-start' 
+  },
+  statusBadgeSmall: { 
+    paddingHorizontal: 8, 
+    paddingVertical: 2, 
+    borderRadius: 12 
+  },
+  statusBadgeTextSmall: { 
+    color: '#fff', 
+    fontSize: 10, 
+    fontWeight: '600' 
+  },
+  statusText: { 
+    color: '#fff', 
+    fontSize: 11, 
+    fontWeight: '600', 
+    textAlign: 'center' 
+  },
+  actionButton: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  auctionFilters: { 
+    flexDirection: 'row', 
+    marginBottom: 15, 
+    gap: 8, 
+    flexWrap: 'wrap' 
+  },
+  auctionFilterChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    backgroundColor: '#f0f0f0', 
+    gap: 4 
+  },
+  auctionFilterChipActive: { 
+    backgroundColor: Colors.primary 
+  },
+  auctionFilterText: { 
+    fontSize: 12, 
+    color: '#666' 
+  },
+  auctionFilterTextActive: { 
+    color: '#fff', 
+    fontWeight: '600' 
+  },
+  auctionItemCard: { 
+    marginBottom: 10, 
+    padding: 12, 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#f0f0f0', 
+    shadowOpacity: 0 
+  },
+  auctionItemHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 8 
+  },
+  auctionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8
   },
-  auctionItemDetailText: {
-    fontSize: 11,
-    color: '#666',
+  auctionItemTitle: { 
+    fontSize: 15, 
+    fontWeight: '600', 
+    flex: 1 
   },
-  adminActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+  auctionItemDetails: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 8, 
+    marginTop: 8 
   },
-  adminActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-    minWidth: 100,
-    justifyContent: 'center',
+  detailChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#f5f5f5', 
+    paddingHorizontal: 10, 
+    paddingVertical: 4, 
+    borderRadius: 16, 
+    gap: 4 
   },
-  approveButton: {
-    backgroundColor: '#4ade80',
+  detailChipText: { 
+    fontSize: 11, 
+    color: '#666' 
   },
-  denyButton: {
-    backgroundColor: '#ef4444',
+  adminActions: { 
+    flexDirection: 'row', 
+    justifyContent: 'flex-end', 
+    gap: 10, 
+    marginTop: 10, 
+    paddingTop: 10, 
+    borderTopWidth: 1, 
+    borderTopColor: '#f0f0f0' 
   },
-  adminActionText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+  actionChip: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 8, 
+    borderRadius: 8, 
+    gap: 6 
   },
-  bottomPadding: {
-    height: 40,
+  approveChip: { 
+    backgroundColor: '#4ade80' 
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  denyChip: { 
+    backgroundColor: '#ef4444' 
   },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
-    maxWidth: 500,
-    maxHeight: '80%',
+  actionChipText: { 
+    color: '#fff', 
+    fontSize: 12, 
+    fontWeight: '600' 
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+  parcelCard: { 
+    marginBottom: 10, 
+    padding: 12, 
+    backgroundColor: '#fff', 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#f0f0f0' 
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  parcelHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 8 
   },
-  photoStrip: {
-    marginBottom: 15,
+  parcelInfo: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
   },
-  photoContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 5,
+  parcelId: { 
+    fontSize: 14, 
+    fontWeight: '600' 
   },
-  tinyPhoto: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+  parcelStatus: { 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 8 
+  },
+  parcelStatusText: { 
+    color: '#fff', 
+    fontSize: 11, 
+    fontWeight: '600' 
+  },
+  parcelDetails: { 
+    marginTop: 8, 
+    gap: 6 
+  },
+  parcelDetailRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8 
+  },
+  parcelDetailText: { 
+    fontSize: 12, 
+    color: '#666' 
+  },
+  parcelActions: { 
+    flexDirection: 'row', 
+    justifyContent: 'flex-end', 
+    marginTop: 10, 
+    paddingTop: 10, 
+    borderTopWidth: 1, 
+    borderTopColor: '#f0f0f0' 
+  },
+  assignButton: { 
+    backgroundColor: '#3b82f6' 
+  },
+  deliverButton: { 
+    backgroundColor: '#4ade80' 
+  },
+  actionButtonText: { 
+    color: '#fff', 
+    fontSize: 12, 
+    fontWeight: '600', 
+    marginLeft: 6 
+  },
+  qualityInfo: { 
+    marginTop: 8, 
+    paddingTop: 8, 
+    borderTopWidth: 1, 
+    borderTopColor: '#f0f0f0', 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8, 
+    flexWrap: 'wrap' 
+  },
+  qualityText: { 
+    fontSize: 12, 
+    fontWeight: '500' 
+  },
+  qualityDescription: { 
+    fontSize: 11, 
+    color: '#666', 
+    width: '100%', 
+    marginTop: 4 
+  },
+  notificationRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 12, 
+    paddingHorizontal: 10, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
+  },
+  unreadNotificationRow: { 
+    backgroundColor: '#f8f9fa' 
+  },
+  selectedNotificationRow: { 
+    backgroundColor: Colors.primary + '10' 
+  },
+  notificationIcon: { 
+    width: 40, 
+    alignItems: 'center' 
+  },
+  notificationContent: { 
+    flex: 1, 
+    marginLeft: 8 
+  },
+  notificationMessage: { 
+    fontSize: 14, 
+    marginBottom: 4 
+  },
+  unreadNotificationMessage: { 
+    fontWeight: '700' 
+  },
+  notificationDate: { 
+    fontSize: 11, 
+    opacity: 0.6 
+  },
+  unreadDot: { 
+    width: 10, 
+    height: 10, 
+    borderRadius: 5, 
+    backgroundColor: Colors.primary, 
+    marginLeft: 10 
+  },
+  selectText: { 
+    fontSize: 12, 
+    color: Colors.primary, 
+    fontWeight: '600' 
+  },
+  selectionActions: { 
+    flexDirection: 'row', 
+    gap: 12 
+  },
+  noNotificationsContainer: { 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 40 
+  },
+  noNotificationsText: { 
+    fontSize: 16, 
+    opacity: 0.6, 
+    marginTop: 12 
+  },
+  daysPicker: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    gap: 10, 
+    marginVertical: 15 
+  },
+  dayButton: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 8, 
+    backgroundColor: '#f0f0f0' 
+  },
+  dayButtonActive: { 
+    backgroundColor: Colors.primary 
+  },
+  dayButtonText: { 
+    fontSize: 14, 
+    color: '#666' 
+  },
+  dayButtonTextActive: { 
+    color: '#fff', 
+    fontWeight: '600' 
+  },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.5)', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  modalContent: { 
+    backgroundColor: '#fff', 
+    borderRadius: 20, 
+    padding: 20, 
+    width: '90%', 
+    maxWidth: 500, 
+    maxHeight: '80%' 
+  },
+  modalHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 15, 
+    paddingBottom: 10, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
+  },
+  modalTitle: { 
+    fontSize: 18, 
+    fontWeight: 'bold' 
+  },
+  modalBody: { 
+    gap: 15 
+  },
+  modalLabel: { 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
+  modalActions: { 
+    flexDirection: 'row', 
+    gap: 10, 
+    marginTop: 10 
+  },
+  modalButton: { 
+    flex: 1, 
+    paddingVertical: 12, 
+    borderRadius: 12, 
+    alignItems: 'center' 
+  },
+  modalInput: {
     borderWidth: 1,
     borderColor: '#e0e0e0',
-  },
-  modalAuctionCard: {
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
     marginBottom: 15,
-    padding: 15,
+    backgroundColor: '#fff',
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
-  modalAuctionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  modalAuctionDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 5,
-    gap: 8,
-  },
-  modalAuctionDetailText: {
-    fontSize: 13,
-    flex: 1,
-  },
-  modalDepositsCard: {
-    padding: 15,
-  },
-  modalDepositsTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  bidderItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    gap: 10,
-  },
-  bidderRank: {
-    width: 40,
-    alignItems: 'center',
-  },
-  rankNumber: {
-    fontSize: 12,
-    color: '#666',
-  },
-  bidderId: {
-    flex: 1,
-    fontSize: 12,
-  },
-  bidderAmount: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.primary,
-  },
-  noDataText: {
-    fontSize: 13,
-    opacity: 0.7,
+  noTransportersText: {
     textAlign: 'center',
     padding: 20,
+    color: '#666',
+    fontStyle: 'italic',
   },
+  cancelModalButton: { 
+    backgroundColor: '#f0f0f0' 
+  },
+  cancelModalButtonText: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#666' 
+  },
+  confirmModalButton: { 
+    backgroundColor: Colors.primary 
+  },
+  confirmModalButtonText: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#fff' 
+  },
+  modalList: { 
+    maxHeight: 400 
+  },
+  modalListItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingVertical: 12, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#f0f0f0' 
+  },
+  modalListItemContent: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12 
+  },
+  modalListItemInfo: { 
+    flex: 1 
+  },
+  modalListItemName: { 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
+  modalListItemEmail: { 
+    fontSize: 12, 
+    opacity: 0.7 
+  },
+  photoStrip: { 
+    marginBottom: 15 
+  },
+  photoContainer: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    paddingVertical: 5 
+  },
+  tinyPhoto: { 
+    width: 60, 
+    height: 60, 
+    borderRadius: 8, 
+    borderWidth: 1, 
+    borderColor: '#e0e0e0' 
+  },
+  modalAuctionCard: { 
+    padding: 15 
+  },
+  modalAuctionTitle: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    marginBottom: 10 
+  },
+  modalAuctionDetail: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginVertical: 5, 
+    gap: 8 
+  },
+  modalAuctionDetailText: { 
+    fontSize: 13, 
+    flex: 1 
+  }
 });

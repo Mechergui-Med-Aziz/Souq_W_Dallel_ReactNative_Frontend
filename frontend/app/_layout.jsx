@@ -59,37 +59,29 @@ function AppContent() {
   const { unreadCount } = useSelector((state) => state.notifications || { unreadCount: 0 });
   const dispatch = useDispatch();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isTransporter, setIsTransporter] = useState(false);
 
   useEffect(() => {
-    // Check if user is admin
     const adminCheck = user?.role?.toUpperCase() === 'ADMIN';
+    const transporterCheck = user?.role?.toUpperCase() === 'TRANSPORTER';
     setIsAdmin(adminCheck);
-    console.log('User role:', user?.role);
-    console.log('Is admin:', adminCheck);
+    setIsTransporter(transporterCheck);
   }, [user]);
 
-  // Fetch notifications periodically
   useEffect(() => {
     if (!token || !user?.id) return;
-
     const fetchData = () => {
       dispatch(fetchNotifications(user.id));
     };
-
     fetchData();
     const interval = setInterval(fetchData, 30000);
-
     return () => clearInterval(interval);
   }, [token, user?.id]);
 
   useEffect(() => {
     if (token && user) {
-      // Start the expiration checker when user is logged in
       startExpirationChecker();
-      
-      return () => {
-        stopExpirationChecker();
-      };
+      return () => stopExpirationChecker();
     }
   }, [token, user]);
   
@@ -100,18 +92,14 @@ function AppContent() {
         <Stack.Screen name="verify-account" />
         <Stack.Screen name="reset-password" />
         <Stack.Screen name="reset-password-verify" />
-        <Stack.Screen name="index" options={{ href: null }} />
-        <Stack.Screen name="create-auction" options={{ href: null }} />
-        <Stack.Screen name="(dashboard)" options={{ href: null }} />
-        <Stack.Screen name="(admin)" options={{ href: null }} />
+        <Stack.Screen name="index" />
+        <Stack.Screen name="create-auction" />
       </Stack>
     );
   }
   
   return (
-    <StripeProvider
-      publishableKey="pk_test_51QyUfWH7Cs6mHwoSdAN9wXiSRsKdfvXifEu4gjQwyQNhl2gUNnE6ZANcuJeIRXxMXsB7lAsRZHnbioJpkzzHhxaq00qvXRYf6G"
-    >
+    <StripeProvider publishableKey="pk_test_51QyUfWH7Cs6mHwoSdAN9wXiSRsKdfvXifEu4gjQwyQNhl2gUNnE6ZANcuJeIRXxMXsB7lAsRZHnbioJpkzzHhxaq00qvXRYf6G">
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -124,16 +112,13 @@ function AppContent() {
           tabBarInactiveTintColor: theme.iconColor,
         }}
       >
+        {/* Common tabs for all users */}
         <Tabs.Screen
           name="index"
           options={{
             title: 'Accueil',
             tabBarIcon: ({ focused, color }) => (
-              <Ionicons
-                name={focused ? 'home' : 'home-outline'}
-                size={24}
-                color={color}
-              />
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
             ),
           }}
         />
@@ -143,11 +128,7 @@ function AppContent() {
           options={{ 
             title: 'Créer',
             tabBarIcon: ({ focused, color }) => (
-              <Ionicons
-                name={focused ? 'add-circle' : 'add-circle-outline'}
-                size={24}
-                color={color}
-              />
+              <Ionicons name={focused ? 'add-circle' : 'add-circle-outline'} size={24} color={color} />
             )
           }} 
         />
@@ -157,13 +138,19 @@ function AppContent() {
           options={{ 
             title: 'Mes enchères',
             tabBarIcon: ({ focused, color }) => (
-              <Ionicons
-                name={focused ? 'list' : 'list-outline'}
-                size={24}
-                color={color}
-              />
+              <Ionicons name={focused ? 'list' : 'list-outline'} size={24} color={color} />
             )
           }} 
+        />
+
+        <Tabs.Screen
+          name="(dashboard)/my-parcels"
+          options={{
+            title: 'Mes colis',
+            tabBarIcon: ({ focused, color }) => (
+              <Ionicons name={focused ? 'cube' : 'cube-outline'} size={24} color={color} />
+            ),
+          }}
         />
 
         <Tabs.Screen
@@ -172,11 +159,7 @@ function AppContent() {
             title: 'Notifications',
             tabBarIcon: ({ focused, color }) => (
               <View style={{ position: 'relative' }}>
-                <Ionicons
-                  name={focused ? 'notifications' : 'notifications-outline'}
-                  size={24}
-                  color={color}
-                />
+                <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={24} color={color} />
                 {unreadCount > 0 && (
                   <View style={[styles.notificationBadge, { backgroundColor: Colors.warning }]}>
                     <Text style={styles.notificationBadgeText}>
@@ -194,30 +177,36 @@ function AppContent() {
           options={{
             title: 'Profil',
             tabBarIcon: ({ focused, color }) => (
-              <Ionicons
-                name={focused ? 'person' : 'person-outline'}
-                size={24}
-                color={color}
-              />
+              <Ionicons name={focused ? 'person' : 'person-outline'} size={24} color={color} />
             ),
           }}
         />
 
-        {/* Admin Dashboard Tab - Only visible for admins */}
+        {/* Admin tab - only visible for admins */}
         {isAdmin && (
           <Tabs.Screen
             name="(admin)"
             options={{
               title: 'Dashboard',
               tabBarIcon: ({ focused, color }) => (
-                  <Ionicons
-                    name={focused ? 'stats-chart' : 'stats-chart-outline'}
-                    size={24}
-                    color={color}
-                  />
+                <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={24} color={color} />
               ),
             }}
           />
+        )}
+
+        {/* Transporter tab - only visible for transporters */}
+        {isTransporter && (
+          <Tabs.Screen
+            name="transporter"
+            options={{
+              title: 'Livraisons',
+              tabBarIcon: ({ focused, color }) => (
+                <Ionicons name={focused ? 'cube' : 'cube-outline'} size={24} color={color} />
+              ),
+            }}
+          />
+          
         )}
 
         {/* Hidden screens */}
@@ -228,7 +217,9 @@ function AppContent() {
         <Tabs.Screen name="(admin)/_layout" options={{ href: null }} />
         <Tabs.Screen name="verify-account" options={{ href: null }}  />
         <Tabs.Screen name="reset-password" options={{ href: null }}  />
-        <Tabs.Screen name="reset-password-verify" options={{ href: null }}  />
+        <Tabs.Screen name="reset-password-verify" options={{ href: null }} />
+        <Tabs.Screen name="parcel-details/[id]" options={{ href: null }} />
+        
       </Tabs>
     </StripeProvider>
   );
@@ -250,15 +241,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: 'bold',
-  },
-  adminIndicator: {
-    position: 'absolute',
-    top: 0,
-    right: -2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

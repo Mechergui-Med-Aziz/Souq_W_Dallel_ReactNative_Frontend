@@ -31,6 +31,7 @@ import {
 import { checkPaymentStatus, markAsPaid } from '../../store/slices/paymentSlice';
 import { Colors } from '../../constants/Colors';
 import { auctionService } from '../../store/services/auctionService';
+import { depositService } from '../../store/services/depositService';
 import { userService } from '../../store/services/userService';
 import { paymentService } from '../../store/services/paymentService';
 import PaymentModal from '../../components/PaymentModal';
@@ -70,7 +71,7 @@ const AuctionDetails = () => {
   const [bidders, setBidders] = useState([]);
   const [bidderNames, setBidderNames] = useState({});
   const [reviewUsers, setReviewUsers] = useState({});
-  const [reviewPhotos, setReviewPhotos] = useState({}); // Cache for review photos
+  const [reviewPhotos, setReviewPhotos] = useState({});
   const [showBidModal, setShowBidModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showAuctionPaymentModal, setShowAuctionPaymentModal] = useState(false);
@@ -79,6 +80,8 @@ const AuctionDetails = () => {
   const [reviewText, setReviewText] = useState('');
   const [userReview, setUserReview] = useState(null);
   const [auctionReviews, setAuctionReviews] = useState([]);
+  const [editingReview, setEditingReview] = useState(null);
+  const [editReviewText, setEditReviewText] = useState('');
   
   // Bid State
   const [bidAmount, setBidAmount] = useState('');
@@ -111,22 +114,82 @@ const AuctionDetails = () => {
   }, [id]);
 
   useEffect(() => {
+    console.log('=== AUCTION DETAILS DEBUG ===');
+    console.log('Auction ID:', id);
+    console.log('Auction Status:', currentAuction?.status);
+    console.log('User Won:', userWon);
+    console.log('isExpired:', isExpired);
+    console.log('hasPaidForThisAuction:', hasPaidForThisAuction);
+    console.log('paymentDeadline:', paymentDeadline);
+    console.log('================================');
+  }, [currentAuction?.status, userWon, isExpired, hasPaidForThisAuction, paymentDeadline, id]);
+
+  useEffect(() => {
     const checkAuctionPayment = async () => {
-      if (user?.id && id) {
+      if (user?.id && id && currentAuction?.status === 'ended' && userWon) {
         setCheckingPaymentStatus(true);
         try {
-          const paid = await paymentService.hasPaidForAuction(user.id, id);
+          // First check local storage
+          let paid = await paymentService.hasPaidForAuction(user.id, id);
+          
+          // If local says not paid, check backend to be sure (if method exists)
+          if (!paid && typeof paymentService.checkBackendPaymentStatus === 'function') {
+            paid = await paymentService.checkBackendPaymentStatus(id);
+          }
+          
           setHasPaidForThisAuction(paid);
         } catch (error) {
           console.error('Error checking payment status:', error);
+          setHasPaidForThisAuction(false);
         } finally {
           setCheckingPaymentStatus(false);
         }
+      } else if (user?.id && id && currentAuction?.status === 'ended' && userWon === false) {
+        // If user is not winner, ensure payment status is false
+        setHasPaidForThisAuction(false);
+      } else if (user?.id && id && currentAuction?.status !== 'ended') {
+        // Reset payment status if auction is not ended yet
+        setHasPaidForThisAuction(false);
+      } else {
+        // Default reset
+        setHasPaidForThisAuction(false);
       }
     };
     
     checkAuctionPayment();
-  }, [user?.id, id]);
+  }, [user?.id, id, currentAuction?.status, userWon]);
+
+  useEffect(() => {
+    // Reset all payment-related state when loading a new auction
+    setHasPaidForThisAuction(false);
+    setUserWon(false);
+    setPaymentDeadline(null);
+    setShowAuctionPaymentModal(false);
+  }, [id]);
+
+  checkBackendPaymentStatus: async (auctionId) => {
+    try {
+      // Fetch deposits for this auction
+      const deposits = await depositService.getDepositsByAuctionId(auctionId);
+      
+      // Check if there's an AUCTION type deposit (means payment was made)
+      const auctionPayment = deposits.find(d => d.type === 'AUCTION');
+      
+      if (auctionPayment) {
+        // If found, sync to local storage
+        const user = await AsyncStorage.getItem('user');
+        if (user) {
+          const userObj = JSON.parse(user);
+          await paymentService.markAsPaidForAuction(userObj.id, auctionId);
+        }
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking backend payment status:', error);
+      return false;
+    }
+  },
 
   // Check payment status when user changes
   useEffect(() => {
@@ -205,7 +268,7 @@ const AuctionDetails = () => {
   const checkWinnerAndPaymentStatus = () => {
     if (!currentAuction || !user) return;
     
-    // Check if auction is ended
+    // Only check if auction is ended
     if (currentAuction.status === 'ended') {
       // Check if user is the winner
       const bids = Object.entries(currentAuction.bidders || {});
@@ -217,7 +280,7 @@ const AuctionDetails = () => {
       
       setUserWon(isWinner);
       
-      // Check payment deadline (24h from expiration)
+      // Only set payment deadline if user is winner
       if (isWinner && currentAuction.expireDate) {
         const expireDate = new Date(currentAuction.expireDate);
         const deadline = new Date(expireDate.getTime() + 24 * 60 * 60 * 1000);
@@ -228,7 +291,13 @@ const AuctionDetails = () => {
         } else {
           setPaymentDeadline(null);
         }
+      } else {
+        setPaymentDeadline(null);
       }
+    } else {
+      // Reset winner state if auction is not ended
+      setUserWon(false);
+      setPaymentDeadline(null);
     }
   };
 
@@ -571,18 +640,41 @@ const AuctionDetails = () => {
       Alert.alert('Succès', 'Votre avis a été ajouté');
       setShowAddReviewModal(false);
       setReviewText('');
-      await loadReviews(); // Reload reviews
+      await loadReviews();
       
     } catch (error) {
       Alert.alert('Erreur', error.message || 'Échec de l\'ajout de l\'avis');
     }
   };
 
-  const handleUpdateReview = () => {
-    handleAddReview();
+  // Add update review handler
+  const handleUpdateReview = async () => {
+    if (!editReviewText.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer un commentaire');
+      return;
+    }
+
+    try {
+      await dispatch(updateReview({
+        auctionId: id,
+        reviewerId: user.id,
+        oldReview: userReview,
+        newReview: editReviewText.trim()
+      })).unwrap();
+
+      Alert.alert('Succès', 'Votre avis a été modifié');
+      setShowAddReviewModal(false);
+      setEditReviewText('');
+      setUserReview(editReviewText.trim());
+      await loadReviews();
+      
+    } catch (error) {
+      Alert.alert('Erreur', error.message || 'Échec de la modification');
+    }
   };
 
-  const handleDeleteReview = () => {
+  // Add delete review handler
+  const handleDeleteReview = async () => {
     Alert.alert(
       'Supprimer l\'avis',
       'Êtes-vous sûr de vouloir supprimer votre avis ?',
@@ -593,9 +685,18 @@ const AuctionDetails = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              Alert.alert('Info', 'Fonctionnalité à implémenter dans le backend');
+              await dispatch(deleteReview({
+                auctionId: id,
+                reviewerId: user.id,
+                review: userReview
+              })).unwrap();
+
+              Alert.alert('Succès', 'Votre avis a été supprimé');
+              setShowAddReviewModal(false);
+              setUserReview(null);
+              await loadReviews();
             } catch (error) {
-              Alert.alert('Erreur', 'Échec de la suppression');
+              Alert.alert('Erreur', error.message || 'Échec de la suppression');
             }
           }
         }
@@ -825,79 +926,77 @@ const AuctionDetails = () => {
             </View>
 
             {/* Winner Payment Section */}
-            {isExpired && userWon && (
+            {isExpired && userWon && !hasPaidForThisAuction && (
               <View style={styles.winnerSection}>
-                {!hasPaidForThisAuction ? (
+                {paymentDeadline && new Date() <= paymentDeadline && (
                   <>
-                    {paymentDeadline && new Date() <= paymentDeadline && (
-                      <TouchableOpacity
-                        style={styles.paymentButton}
-                        onPress={() => setShowAuctionPaymentModal(true)}
-                        disabled={checkingPaymentStatus}
-                      >
-                        <LinearGradient
-                          colors={['#fbbf24', '#f59e0b']}
-                          style={styles.paymentButtonGradient}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 0 }}
-                        >
-                          <View style={styles.buttonContent}>
-                            <Ionicons name="card" size={24} color="#fff" />
-                            <ThemedText style={styles.paymentButtonText}>
-                              Payer {formatPrice(highestBid)} maintenant
-                            </ThemedText>
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                    )}
-
-                    {/* Payment deadline timer */}
-                    {paymentDeadline && new Date() <= paymentDeadline && (
-                      <View style={styles.deadlineContainer}>
-                        <Ionicons name="time-outline" size={20} color="#856404" />
-                        <View style={styles.deadlineTextContainer}>
-                          <ThemedText style={styles.deadlineLabel}>
-                            Délai de paiement
-                          </ThemedText>
-                          <ThemedText style={styles.deadlineTimer}>
-                            {timeUntilDeadline || '24:00:00'}
-                          </ThemedText>
-                        </View>
-                        <View style={styles.deadlineBadge}>
-                          <ThemedText style={styles.deadlineBadgeText}>
-                            {paymentDeadline.toLocaleDateString('fr-FR', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </ThemedText>
-                        </View>
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <View style={styles.paidContainer}>
-                    <LinearGradient
-                      colors={['#4ade80', '#22c55e']}
-                      style={styles.paidGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
+                    <TouchableOpacity
+                      style={styles.paymentButton}
+                      onPress={() => setShowAuctionPaymentModal(true)}
+                      disabled={checkingPaymentStatus}
                     >
-                      <View style={styles.paidContent}>
-                        <Ionicons name="checkmark-circle" size={28} color="#fff" />
-                        <View>
-                          <ThemedText style={styles.paidTitle}>
-                            Paiement confirmé
-                          </ThemedText>
-                          <ThemedText style={styles.paidSubtitle}>
-                            Enchère payée - Merci !
+                      <LinearGradient
+                        colors={['#fbbf24', '#f59e0b']}
+                        style={styles.paymentButtonGradient}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                      >
+                        <View style={styles.buttonContent}>
+                          <Ionicons name="card" size={24} color="#fff" />
+                          <ThemedText style={styles.paymentButtonText}>
+                            Payer {formatPrice(highestBid)} maintenant
                           </ThemedText>
                         </View>
+                      </LinearGradient>
+                    </TouchableOpacity>
+
+                    <View style={styles.deadlineContainer}>
+                      <Ionicons name="time-outline" size={20} color="#856404" />
+                      <View style={styles.deadlineTextContainer}>
+                        <ThemedText style={styles.deadlineLabel}>
+                          Délai de paiement
+                        </ThemedText>
+                        <ThemedText style={styles.deadlineTimer}>
+                          {timeUntilDeadline || '24:00:00'}
+                        </ThemedText>
                       </View>
-                    </LinearGradient>
-                  </View>
+                      <View style={styles.deadlineBadge}>
+                        <ThemedText style={styles.deadlineBadgeText}>
+                          {paymentDeadline.toLocaleDateString('fr-FR', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </>
                 )}
+              </View>
+            )}
+
+            {/* Show paid message only if user has paid */}
+            {isExpired && userWon && hasPaidForThisAuction && (
+              <View style={styles.paidContainer}>
+                <LinearGradient
+                  colors={['#4ade80', '#22c55e']}
+                  style={styles.paidGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <View style={styles.paidContent}>
+                    <Ionicons name="checkmark-circle" size={28} color="#fff" />
+                    <View>
+                      <ThemedText style={styles.paidTitle}>
+                        Paiement confirmé
+                      </ThemedText>
+                      <ThemedText style={styles.paidSubtitle}>
+                        Enchère payée - Merci !
+                      </ThemedText>
+                    </View>
+                  </View>
+                </LinearGradient>
               </View>
             )}
 
@@ -966,7 +1065,14 @@ const AuctionDetails = () => {
                         ]
                       );
                     } else {
-                      setShowAddReviewModal(true);
+                      if (userReview) {
+                        // If user already has a review, set edit mode
+                        setEditReviewText(userReview);
+                        setShowAddReviewModal(true);
+                      } else {
+                        setReviewText('');
+                        setShowAddReviewModal(true);
+                      }
                     }
                   }}
                 >
@@ -976,13 +1082,100 @@ const AuctionDetails = () => {
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    <Ionicons name="add" size={18} color="#fff" />
+                    <Ionicons name={userReview ? "create-outline" : "add"} size={18} color="#fff" />
                     <ThemedText style={styles.addReviewText}>
-                      Publier votre avis
+                      {userReview ? 'Modifier mon avis' : 'Publier votre avis'}
                     </ThemedText>
                   </LinearGradient>
                 </TouchableOpacity>
               </View>
+
+              <Modal
+                visible={showAddReviewModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => {
+                  setShowAddReviewModal(false);
+                  setEditReviewText('');
+                  setReviewText('');
+                }}
+              >
+                <View style={styles.modalOverlay}>
+                  <View style={styles.modalContent}>
+                    <View style={styles.modalHeader}>
+                      <ThemedText title style={styles.modalTitle}>
+                        {userReview ? 'Modifier mon avis' : 'Publier un avis'}
+                      </ThemedText>
+                      <TouchableOpacity onPress={() => {
+                        setShowAddReviewModal(false);
+                        setEditReviewText('');
+                        setReviewText('');
+                      }}>
+                        <Ionicons name="close" size={24} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.modalBody}>
+                      <TextInput
+                        style={styles.reviewTextInput}
+                        placeholder="Votre avis sur cette enchère..."
+                        value={userReview ? editReviewText : reviewText}
+                        onChangeText={userReview ? setEditReviewText : setReviewText}
+                        multiline
+                        numberOfLines={4}
+                        maxLength={500}
+                      />
+
+                      <View style={styles.modalActions}>
+                        <TouchableOpacity
+                          style={[styles.modalButton, styles.cancelModalButton]}
+                          onPress={() => {
+                            setShowAddReviewModal(false);
+                            setEditReviewText('');
+                            setReviewText('');
+                          }}
+                        >
+                          <ThemedText style={styles.cancelModalButtonText}>
+                            Annuler
+                          </ThemedText>
+                        </TouchableOpacity>
+
+                        {userReview ? (
+                          <TouchableOpacity
+                            style={[styles.modalButton, styles.confirmModalButton]}
+                            onPress={handleUpdateReview}
+                          >
+                            <ThemedText style={styles.confirmModalButtonText}>
+                              Modifier
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.modalButton, styles.confirmModalButton]}
+                            onPress={handleAddReview}
+                          >
+                            <ThemedText style={styles.confirmModalButtonText}>
+                              Publier
+                            </ThemedText>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {userReview && (
+                        <TouchableOpacity
+                          style={styles.deleteReviewButton}
+                          onPress={handleDeleteReview}
+                        >
+                          <Ionicons name="trash-outline" size={20} color={Colors.warning} />
+                          <ThemedText style={styles.deleteReviewText}>
+                            Supprimer mon avis
+                          </ThemedText>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              </Modal>
 
               {auctionReviews.length > 0 ? (
                 <>

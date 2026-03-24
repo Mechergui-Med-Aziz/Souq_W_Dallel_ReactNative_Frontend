@@ -1,4 +1,4 @@
-export const API_BASE_URL = 'http://192.168.1.4:8080';
+export const API_BASE_URL = 'http://192.168.1.5:8080';
 
 export const API_ENDPOINTS = {
   // Auth endpoints
@@ -31,9 +31,24 @@ export const API_ENDPOINTS = {
   // Review endpoints
   ADD_REVIEW: (auctionId, reviewerId, review) => `/api/auctions/auction/addReview/${auctionId}/${reviewerId}/${review}`,
   GET_REVIEWS: (auctionId) => `/api/auctions/auction/reviews/${auctionId}`,
+  UPDATE_REVIEW: (auctionId, reviewerId, oldReview, newReview) => 
+    `/api/auctions/auction/updateReview/${auctionId}/${reviewerId}/${encodeURIComponent(oldReview)}/${encodeURIComponent(newReview)}`,
+  DELETE_REVIEW: (auctionId, reviewerId, review) => 
+    `/api/auctions/auction/deleteReview/${auctionId}/${reviewerId}/${encodeURIComponent(review)}/`,
   
   // Admin auction actions
   UPDATE_AUCTION_STATUS: (auctionId, adminId, status) => `/api/auctions/auction/${auctionId}/${adminId}/${status}`,
+
+  // Block/Unblock
+  BLOCK_USER: (id, days) => `/api/users/admin/block/${id}/${days}`,
+  UNBLOCK_USER: (id) => `/api/users/admin/unblock/${id}`,
+
+  // Role management
+  MAKE_ADMIN: (id) => `/api/users/admin/make-admin/${id}`,
+  MAKE_USER: (id) => `/api/users/admin/make-user/${id}`,
+  MAKE_TRANSPORTER: (id) => `/api/users/admin/make-transporter/${id}`,
+  REMOVE_TRANSPORTER: (id) => `/api/users/admin/remove-transporter/${id}`,
+  GET_ALL_TRANSPORTERS: '/api/users/transporters/all',
   
   // Auction winner
   PROCESS_WINNER: (auctionId) => `/api/auctions/auction/ended/${auctionId}`,
@@ -50,4 +65,19 @@ export const API_ENDPOINTS = {
   // Payment endpoints
   CREATE_PAYMENT_INTENT: '/api/payment/pay1dt',
   PAY_AUCTION: (auctionId, amount) => `/api/payment/payAuction/${auctionId}/${amount}`,
+
+  // Parcel endpoints
+  GET_ALL_PARCELS: '/api/parcels/getAll',
+  GET_PARCEL_BY_ID: (id) => `/api/parcels/${id}`,
+  UPDATE_PARCEL: (id) => `/api/parcels/update/${id}`,  // Make sure this exists
+  GET_PARCELS_BY_ADMIN: (adminId) => `/api/parcels/admin/${adminId}`,
+  GET_PARCELS_BY_TRANSPORTER: (transporterId) => `/api/parcels/transporter/${transporterId}`,
+  GET_PARCELS_BY_BUYER: (buyerId) => `/api/parcels/buyer/${buyerId}`,
+  UPDATE_PARCEL_QUALITY: (id, isValid, description) => {
+    if (description && description.length > 0) {
+      return `/api/parcels/validate/${id}/${isValid}?description=${encodeURIComponent(description)}`;
+    }
+    return `/api/parcels/validate/${id}/${isValid}`;
+  },
+  DELIVER_PARCEL: (id) => `/api/parcels/delivred/${id}`,
 };

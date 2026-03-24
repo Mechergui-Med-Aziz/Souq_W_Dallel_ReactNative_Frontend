@@ -6,7 +6,9 @@ import userReducer from './slices/userSlice';
 import auctionReducer from './slices/auctionSlice';
 import notificationReducer from './slices/notificationSlice';
 import paymentReducer from './slices/paymentSlice';
-import depositReducer from './slices/depositSlice'; // Add this
+import depositReducer from './slices/depositSlice';
+import parcelReducer from './slices/parcelSlice';
+import reviewReducer from './slices/reviewSlice';
 
 const persistConfig = {
   key: 'root',
@@ -25,6 +27,8 @@ export const store = configureStore({
     notifications: notificationReducer,
     payment: persistedPaymentReducer,
     deposit: depositReducer,
+    parcel: parcelReducer,
+    reviews: reviewReducer, 
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
