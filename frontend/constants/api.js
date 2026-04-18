@@ -1,4 +1,4 @@
-export const API_BASE_URL = "http://192.168.1.6:8080";
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 export const API_ENDPOINTS = {
   // Auth endpoints

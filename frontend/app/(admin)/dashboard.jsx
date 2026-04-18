@@ -90,7 +90,7 @@ const AdminDashboard = () => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [filteredDeposits, setFilteredDeposits] = useState([]);
-  const [userFilter, setUserFilter] = useState('all'); // all, users, admins, transporters, blocked
+  const [userFilter, setUserFilter] = useState('all');
   
   // UI state
   const [auctionFilter, setAuctionFilter] = useState('all');
@@ -1034,7 +1034,7 @@ const AdminDashboard = () => {
                 height={200}
                 chartConfig={{
                   color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                  labelColor: (opacity = 1) => theme.text,
+                  labelColor: (opacity = 1) => theme.text.opacity,
                 }}
                 accessor="population"
                 backgroundColor="transparent"
