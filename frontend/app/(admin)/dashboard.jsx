@@ -393,7 +393,7 @@ const AdminDashboard = () => {
     const totalDepositAmount = depositsData.reduce((sum, d) => sum + (d.amount || 0), 0);
     
     const auctionTotal = depositsData
-      .filter(d => d.type === 'AUCTION')
+      .filter((d) => d.type === "CREATION")
       .reduce((sum, d) => sum + (d.amount || 0), 0);
     const bidsTotal = depositsData
       .filter(d => d.type === 'BIDS')
@@ -1034,7 +1034,7 @@ const AdminDashboard = () => {
                 height={200}
                 chartConfig={{
                   color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                  labelColor: (opacity = 1) => theme.text.opacity,
+                  labelColor: (opacity = 1) => theme.text,
                 }}
                 accessor="population"
                 backgroundColor="transparent"
@@ -1134,7 +1134,7 @@ const AdminDashboard = () => {
               <Ionicons name="hammer" size={24} color="#3b82f6" />
             </View>
             <View style={styles.statInfo}>
-              <ThemedText style={styles.statTitle}>Dépôts Enchères</ThemedText>
+              <ThemedText style={styles.statTitle}>Dépôts Création</ThemedText>
               <ThemedText style={styles.statValue}>{formatCurrency(depositStats.auction)}</ThemedText>
             </View>
           </ThemedCard>

@@ -114,6 +114,7 @@ const ResetPassword = () => {
 
               <ThemedTextInput
                 style={styles.input}
+                icon="card-outline"
                 placeholder="CIN (8 chiffres)"
                 keyboardType="numeric"
                 maxLength={8}
@@ -124,6 +125,7 @@ const ResetPassword = () => {
 
               <ThemedTextInput
                 style={styles.input}
+                icon="mail-outline"
                 placeholder="Email"
                 keyboardType="email-address"
                 autoCapitalize="none"

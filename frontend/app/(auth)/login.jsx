@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, Text, Alert, TouchableOpacity } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import ThemedView from '../../components/ThemedView';
@@ -54,62 +54,67 @@ const Login = () => {
 
   return (
     <ThemedView safe style={styles.container}>
-      <Spacer height={40} />
-      
-      <ThemedText title={true} style={styles.title}>
-        Connexion
-      </ThemedText>
-
-      <ThemedTextInput
-        style={styles.input}
-        placeholder="Email"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        onChangeText={setEmail}
-        value={email}
-      />
-
-      <ThemedTextInput
-        style={styles.input}
-        placeholder="Mot de passe"
-        onChangeText={setPassword}
-        value={password}
-        secureTextEntry
-      />
-
-      <ThemedButton 
-        onPress={handleSubmit} 
-        disabled={loading}
-        style={loading && styles.disabledButton}
-      >
-        <Text style={{ color: '#f2f2f2'}}>
-          {loading ? 'Connexion...' : 'Se connecter'}
-        </Text>
-      </ThemedButton>
-
-      <Spacer />
-
-      {error && (
-        <Text style={styles.error}>
-          {error}
-        </Text>
-      )}
-
-      <Spacer height={40} />
-
-      <Link href='/register'>
-        <ThemedText style={{ textAlign: 'center'}}>
-          Pas encore de compte ? S'inscrire
+      <View style={styles.formContainer}>
+        <Spacer height={40} />
+        
+        <ThemedText title={true} style={styles.title}>
+          Connexion
         </ThemedText>
-      </Link>
 
-      <Spacer height={20} />
+        <ThemedTextInput
+          style={styles.input}
+          icon="mail-outline"
+          placeholder="Email"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          onChangeText={setEmail}
+          value={email}
+        />
 
-      <TouchableOpacity onPress={() => router.push('/reset-password')}>
-        <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
-          Mot de passe oublié ?
-        </ThemedText>
-      </TouchableOpacity>
+        <ThemedTextInput
+          style={styles.input}
+          icon="lock-closed-outline"
+          placeholder="Mot de passe"
+          onChangeText={setPassword}
+          value={password}
+          secureTextEntry
+        />
+
+        <ThemedButton 
+          onPress={handleSubmit} 
+          disabled={loading}
+          style={[styles.button, loading && styles.disabledButton]}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? 'Connexion...' : 'Se connecter'}
+          </Text>
+        </ThemedButton>
+
+        <Spacer />
+
+        {error && (
+          <Text style={styles.error}>
+            {error}
+          </Text>
+        )}
+
+        <Spacer height={30} />
+
+        <TouchableOpacity onPress={() => router.push('/register')}>
+          <ThemedText style={styles.linkRow}>
+            Pas encore de compte ?{' '}
+            <Text style={styles.linkText}>S'inscrire</Text>
+          </ThemedText>
+        </TouchableOpacity>
+
+        <Spacer height={12} />
+
+        <TouchableOpacity onPress={() => router.push('/reset-password')}>
+          <Text style={styles.linkText}>
+            Mot de passe oublié ?
+          </Text>
+        </TouchableOpacity>
+      </View>
     </ThemedView>
   );
 };
@@ -119,7 +124,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: 440,
+    alignItems: 'center',
   },
   title: {
     textAlign: 'center',
@@ -128,8 +138,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   input: {
+    marginBottom: 16,
+  },
+  button: {
     width: '100%',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   error: {
     color: Colors.warning,
@@ -139,12 +158,21 @@ const styles = StyleSheet.create({
     borderColor: Colors.warning,
     borderWidth: 1,
     borderRadius: 6,
-    marginHorizontal: 10,
     textAlign: 'center',
   },
   disabledButton: {
     opacity: 0.5,
-  }
+  },
+  linkRow: {
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  linkText: {
+    color: Colors.primary,
+    textDecorationLine: 'underline',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
 
 export default Login;

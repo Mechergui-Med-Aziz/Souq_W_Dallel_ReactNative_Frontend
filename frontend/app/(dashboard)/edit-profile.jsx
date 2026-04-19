@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   StyleSheet, 
   View, 
   ScrollView, 
@@ -280,6 +280,7 @@ const EditProfile = () => {
                 <ThemedText style={styles.inputLabel}>First Name </ThemedText>
                 <ThemedTextInput
                   style={[styles.input, errors.firstname && styles.inputError]}
+                  icon="person-outline"
                   placeholder="Enter your first name"
                   value={formData.firstname}
                   onChangeText={(value) => handleChange('firstname', value)}
@@ -289,6 +290,7 @@ const EditProfile = () => {
                 <ThemedText style={styles.inputLabel}>Last Name </ThemedText>
                 <ThemedTextInput
                   style={[styles.input, errors.lastname && styles.inputError]}
+                  icon="person-outline"
                   placeholder="Enter your last name"
                   value={formData.lastname}
                   onChangeText={(value) => handleChange('lastname', value)}
@@ -298,6 +300,7 @@ const EditProfile = () => {
                 <ThemedText style={styles.inputLabel}>CIN </ThemedText>
                 <ThemedTextInput
                   style={[styles.input, errors.cin && styles.inputError]}
+                  icon="card-outline"
                   placeholder="Enter your CIN number"
                   keyboardType="numeric"
                   value={formData.cin}
@@ -308,6 +311,7 @@ const EditProfile = () => {
                 <ThemedText style={styles.inputLabel}>Email </ThemedText>
                 <ThemedTextInput
                   style={[styles.input, errors.email && styles.inputError]}
+                  icon="mail-outline"
                   placeholder="Enter your email"
                   keyboardType="email-address"
                   autoCapitalize="none"

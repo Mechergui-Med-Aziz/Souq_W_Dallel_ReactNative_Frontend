@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { StyleSheet, Text, Alert, TouchableWithoutFeedback, TouchableOpacity } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, ScrollView, Platform, Keyboard, View, Pressable } from 'react-native';
 import { useRouter } from "expo-router";
-import { Keyboard } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import ThemedView from '../../components/ThemedView';
@@ -28,6 +27,12 @@ const Register = () => {
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const dismissKeyboard = () => {
+    if (Platform.OS !== 'web') {
+      Keyboard.dismiss();
+    }
   };
 
   const handleSubmit = async () => {
@@ -73,95 +78,118 @@ const Register = () => {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <ThemedView safe style={styles.container}>
-        <Spacer height={40} />
-        
-        <ThemedText title={true} style={styles.title}>
-          Inscription
-        </ThemedText>
-
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="Prénom"
-          onChangeText={(value) => handleChange('firstname', value)}
-          value={formData.firstname}
-        />
-
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="Nom"
-          onChangeText={(value) => handleChange('lastname', value)}
-          value={formData.lastname}
-        />
-
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="CIN (8 chiffres)"
-          keyboardType="numeric"
-          maxLength={8}
-          onChangeText={(value) => handleChange('cin', value)}
-          value={formData.cin}
-        />
-
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="Email"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          onChangeText={(value) => handleChange('email', value)}
-          value={formData.email}
-        />
-
-        <ThemedTextInput
-          style={styles.input}
-          placeholder="Mot de passe (min. 6 caractères)"
-          autoCapitalize="none"
-          onChangeText={(value) => handleChange('password', value)}
-          value={formData.password}
-          secureTextEntry
-        />
-
-        <ThemedButton 
-          onPress={handleSubmit} 
-          disabled={loading}
-          style={loading && styles.disabledButton}
+    <ThemedView safe style={styles.container}>
+      <Pressable onPress={dismissKeyboard} style={styles.pressable}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={{ color: '#f2f2f2'}}>
-            {loading ? 'Inscription...' : "S'inscrire"}
-          </Text>
-        </ThemedButton>
-
-        <Spacer />
-
-        {error && <Text style={styles.error}> {error} </Text>}
-
-        <Spacer height={40} />
-
-        <TouchableOpacity onPress={() => router.push('/login')}>
-          <ThemedText style={{ textAlign: 'center'}}>
-            Déjà un compte ? Se connecter
+          <Spacer height={40} />
+          
+          <ThemedText title={true} style={styles.title}>
+            Inscription
           </ThemedText>
-        </TouchableOpacity>
 
-        <Spacer height={20} />
+          <ThemedTextInput
+            style={styles.input}
+            icon="person-outline"
+            placeholder="Prénom"
+            onChangeText={(value) => handleChange('firstname', value)}
+            value={formData.firstname}
+          />
 
-        <TouchableOpacity onPress={() => router.push('/reset-password')}>
-          <ThemedText style={{ textAlign: 'center', color: Colors.primary }}>
-            Mot de passe oublié ?
-          </ThemedText>
-        </TouchableOpacity>
-      </ThemedView>
-    </TouchableWithoutFeedback>
+          <ThemedTextInput
+            style={styles.input}
+            icon="person-outline"
+            placeholder="Nom"
+            onChangeText={(value) => handleChange('lastname', value)}
+            value={formData.lastname}
+          />
+
+          <ThemedTextInput
+            style={styles.input}
+            icon="card-outline"
+            placeholder="CIN (8 chiffres)"
+            keyboardType="numeric"
+            maxLength={8}
+            onChangeText={(value) => handleChange('cin', value)}
+            value={formData.cin}
+          />
+
+          <ThemedTextInput
+            style={styles.input}
+            icon="mail-outline"
+            placeholder="Email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            onChangeText={(value) => handleChange('email', value)}
+            value={formData.email}
+          />
+
+          <ThemedTextInput
+            style={styles.input}
+            icon="lock-closed-outline"
+            placeholder="Mot de passe (min. 6 caractères)"
+            autoCapitalize="none"
+            onChangeText={(value) => handleChange('password', value)}
+            value={formData.password}
+            secureTextEntry
+          />
+
+          <ThemedButton 
+            onPress={handleSubmit} 
+            disabled={loading}
+            style={[styles.button, loading && styles.disabledButton]}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? 'Inscription...' : "S'inscrire"}
+            </Text>
+          </ThemedButton>
+
+          <Spacer />
+
+          {error && <Text style={styles.error}> {error} </Text>}
+
+          <Spacer height={30} />
+
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <ThemedText style={styles.linkRow}>
+              Déjà un compte ?{' '}
+              <Text style={styles.linkText}>Se connecter</Text>
+            </ThemedText>
+          </TouchableOpacity>
+
+          <Spacer height={12} />
+
+          <TouchableOpacity onPress={() => router.push('/reset-password')}>
+            <Text style={styles.linkText}>
+              Mot de passe oublié ?
+            </Text>
+          </TouchableOpacity>
+
+          <Spacer height={40} />
+        </ScrollView>
+      </Pressable>
+    </ThemedView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  pressable: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+    maxWidth: 440,
+    alignSelf: 'center',
+    width: '100%',
   },
   title: {
     textAlign: 'center',
@@ -170,8 +198,17 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   input: {
+    marginBottom: 14,
+  },
+  button: {
     width: '100%',
-    marginBottom: 15,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   error: {
     color: Colors.warning,
@@ -181,12 +218,21 @@ const styles = StyleSheet.create({
     borderColor: Colors.warning,
     borderWidth: 1,
     borderRadius: 6,
-    marginHorizontal: 10,
     textAlign: 'center',
   },
   disabledButton: {
     opacity: 0.5,
-  }
+  },
+  linkRow: {
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  linkText: {
+    color: Colors.primary,
+    textDecorationLine: 'underline',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
 
 export default Register;

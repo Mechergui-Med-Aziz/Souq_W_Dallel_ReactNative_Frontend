@@ -246,6 +246,7 @@ const ResetPasswordVerify = () => {
 
                   <ThemedTextInput
                     style={styles.input}
+                    icon="lock-closed-outline"
                     placeholder="Nouveau mot de passe"
                     secureTextEntry
                     value={newPassword}
@@ -255,6 +256,7 @@ const ResetPasswordVerify = () => {
 
                   <ThemedTextInput
                     style={styles.input}
+                    icon="lock-closed-outline"
                     placeholder="Confirmer le mot de passe"
                     secureTextEntry
                     value={confirmPassword}
