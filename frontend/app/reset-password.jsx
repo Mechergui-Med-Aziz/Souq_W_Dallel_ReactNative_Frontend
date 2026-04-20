@@ -58,15 +58,16 @@ const ResetPassword = () => {
       // Store email and cin for next step
       await AsyncStorage.setItem('resetPasswordEmail', formData.email);
       await AsyncStorage.setItem('resetPasswordCin', formData.cin);
-      
+
       showAlert(
         'Code Envoyé', 
         result.message,
         [{ 
           text: 'Entrer le code', 
           onPress: () => router.push('/reset-password-verify')
-        }]
+        }],
       );
+      router.push("/reset-password-verify");
     } catch (error) {
       showAlert('Erreur', error.message);
     } finally {

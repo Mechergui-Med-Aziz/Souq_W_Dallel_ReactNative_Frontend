@@ -140,6 +140,8 @@ const ResetPasswordVerify = () => {
         result.message,
         [{ text: 'OK', onPress: () => router.replace('/login') }]
       );
+
+      router.replace("/login");
       
     } catch (error) {
       console.error('Update password error:', error);
