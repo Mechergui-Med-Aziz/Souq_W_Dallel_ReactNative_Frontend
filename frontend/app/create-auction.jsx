@@ -480,6 +480,14 @@ const CreateAuction = () => {
 
   const calendarDays = generateCalendarDays();
 
+  const scrollViewRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: false });
+    }
+  }, []);
+
   return (
     <ThemedView safe style={styles.container}>
       <KeyboardAvoidingView
@@ -487,6 +495,7 @@ const CreateAuction = () => {
         style={styles.keyboardView}
       >
         <ScrollView
+          ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
@@ -1521,8 +1530,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
-    width: "90%",
-    maxWidth: 400,
+    width: "85%",
+    maxWidth: 380,
+    maxHeight: "60%",
   },
   paymentConfirmModal: {
     backgroundColor: "#fff",
@@ -1627,9 +1637,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 6,
     backgroundColor: "#f8f9fa",
   },
   categoryItemActive: {
@@ -1642,13 +1653,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   categoryIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 10,
   },
   categoryIconContainerActive: {
     backgroundColor: Colors.primary,

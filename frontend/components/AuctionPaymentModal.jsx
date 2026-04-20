@@ -118,7 +118,11 @@ const AuctionPaymentModal = ({
         console.error("Payment confirmation error:", error);
         showAlert("Erreur", error.message || "Échec du paiement");
       } else if (paymentIntent) {
-        showAlert("Succès", "Paiement effectué avec succès !");
+        if (isCreationFee) {
+          showAlert("Paiement réussi", "Le paiement des frais de création a été effectué avec succès. Votre enchère est maintenant en attente de validation par les administrateurs.");
+        } else {
+          showAlert("Paiement réussi", "Le paiement a été effectué avec succès !");
+        }
         onPaymentComplete();
         onClose();
       }

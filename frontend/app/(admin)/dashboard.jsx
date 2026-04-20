@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -390,14 +390,14 @@ const AdminDashboard = () => {
     const pendingParcels = parcelsArray.filter(p => !p.delivred).length;
     const deliveredParcels = parcelsArray.filter(p => p.delivred).length;
     
-    const totalDepositAmount = depositsData.reduce((sum, d) => sum + (d.amount || 0), 0);
-    
     const auctionTotal = depositsData
       .filter((d) => d.type === "CREATION")
       .reduce((sum, d) => sum + (d.amount || 0), 0);
+    const auctionTotalTND = auctionTotal / 1000;
     const bidsTotal = depositsData
       .filter(d => d.type === 'BIDS')
       .reduce((sum, d) => sum + (d.amount || 0), 0);
+    const totalDepositAmount = auctionTotalTND + bidsTotal;
     
     if (isMounted.current) {
       setAuctionCounts({
@@ -409,7 +409,7 @@ const AdminDashboard = () => {
       
       setDepositStats({
         total: totalDepositAmount,
-        auction: auctionTotal,
+        auction: auctionTotalTND,
         bids: bidsTotal
       });
       

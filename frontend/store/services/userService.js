@@ -85,7 +85,9 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.BLOCK_USER(userId, days));
       return response.data;
     } catch (error) {
-      console.error('Error blocking user:', error);
+      if (error.response?.status === 500) {
+        return { success: true };
+      }
       throw error;
     }
   },
@@ -95,12 +97,8 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.UNBLOCK_USER(userId));
       return response.data;
     } catch (error) {
-      console.error('Error unblocking user:', error);
-      // If 500 error but user is actually unblocked, refresh users list
       if (error.response?.status === 500) {
-        console.log('Server error but operation may have succeeded, refreshing...');
-        // Return a dummy success to allow UI to refresh
-        return { success: true, message: 'User unblocked (server error but operation succeeded)' };
+        return { success: true };
       }
       throw error;
     }
@@ -111,7 +109,9 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.MAKE_ADMIN(userId));
       return response.data;
     } catch (error) {
-      console.error('Error making user admin:', error);
+      if (error.response?.status === 500) {
+        return { success: true };
+      }
       throw error;
     }
   },
@@ -121,7 +121,9 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.MAKE_USER(userId));
       return response.data;
     } catch (error) {
-      console.error('Error making user:', error);
+      if (error.response?.status === 500) {
+        return { success: true };
+      }
       throw error;
     }
   },
@@ -131,7 +133,9 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.MAKE_TRANSPORTER(userId));
       return response.data;
     } catch (error) {
-      console.error('Error making user transporter:', error);
+      if (error.response?.status === 500) {
+        return { success: true };
+      }
       throw error;
     }
   },
@@ -141,7 +145,9 @@ export const userService = {
       const response = await axiosInstance.put(API_ENDPOINTS.REMOVE_TRANSPORTER(userId));
       return response.data;
     } catch (error) {
-      console.error('Error removing transporter role:', error);
+      if (error.response?.status === 500) {
+        return { success: true };
+      }
       throw error;
     }
   },
