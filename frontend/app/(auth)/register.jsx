@@ -83,7 +83,7 @@ La plateforme se réserve le droit de suspendre ou supprimer un compte en cas de
 La plateforme se réserve le droit de modifier les présentes CGU à tout moment. Les utilisateurs seront informés de toute modification importante.
 
 13. Contact
-Pour toute question ou réclamation, veuillez contacter notre support à : support@sdauction.tn`;
+Pour toute question ou réclamation, veuillez contacter notre support à : souq.w.dallel@gmail.com`;
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -336,26 +336,26 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
     maxWidth: 440,
-    alignSelf: 'center',
-    width: '100%',
+    alignSelf: "center",
+    width: "100%",
   },
   title: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 28,
     marginBottom: 30,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   input: {
     marginBottom: 14,
   },
   termsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
     marginBottom: 18,
     marginTop: 4,
     paddingHorizontal: 2,
@@ -365,8 +365,8 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 10,
   },
   checkboxChecked: {
@@ -374,9 +374,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   termsTextContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
     flex: 1,
   },
   termsText: {
@@ -385,67 +385,68 @@ const styles = StyleSheet.create({
   termsLink: {
     fontSize: 13,
     color: Colors.primary,
-    textDecorationLine: 'underline',
-    fontWeight: '600',
+    textDecorationLine: "underline",
+    fontWeight: "600",
   },
   button: {
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     marginTop: 6,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   error: {
     color: Colors.warning,
     padding: 10,
-    width: '90%',
-    backgroundColor: '#f5c1c8',
+    width: "90%",
+    backgroundColor: "#f5c1c8",
     borderColor: Colors.warning,
     borderWidth: 1,
     borderRadius: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   disabledButton: {
     opacity: 0.5,
   },
   linkRow: {
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 14,
   },
   linkText: {
     color: Colors.primary,
-    textDecorationLine: 'underline',
+    textDecorationLine: "underline",
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    borderRadius: 20,
+    borderRadius: 15,
     padding: 20,
-    width: '92%',
+    width: "92%",
     maxWidth: 500,
-    maxHeight: '80%',
+    maxHeight: "80%",
+    minHeight: "80%",
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 15,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e7ed',
+    borderBottomColor: "#e8e7ed",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   modalCloseButton: {
     padding: 2,
@@ -456,19 +457,19 @@ const styles = StyleSheet.create({
   reglementText: {
     fontSize: 13.5,
     lineHeight: 21,
-    textAlign: 'left',
+    textAlign: "left",
   },
   modalAcceptButton: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: 14,
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: 15,
   },
   modalAcceptButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });
 

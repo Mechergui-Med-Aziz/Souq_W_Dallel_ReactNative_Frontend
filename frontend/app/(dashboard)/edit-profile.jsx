@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   input: {
-    padding: 14,
+    padding: 4,
     fontSize: 16,
     fontWeight: 'bold',
     borderRadius: 10,

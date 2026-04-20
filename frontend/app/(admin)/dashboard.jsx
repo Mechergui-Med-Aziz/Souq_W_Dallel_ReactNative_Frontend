@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -60,7 +60,7 @@ const AdminDashboard = () => {
   
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(isLargeScreen);
-  const [activeMenu, setActiveMenu] = useState('dashboard');
+  const [activeMenu, setActiveMenu] = useState('dashboard'); 
   
   // Data state
   const [users, setUsers] = useState([]);
